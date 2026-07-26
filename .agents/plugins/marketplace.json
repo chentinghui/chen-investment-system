@@ -1,0 +1,20 @@
+{
+  "name": "chen-investment-system",
+  "interface": {
+    "displayName": "陈氏投资系统 Marketplace"
+  },
+  "plugins": [
+    {
+      "name": "chen-investment-system",
+      "source": {
+        "source": "local",
+        "path": "./plugins/chen-investment-system"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

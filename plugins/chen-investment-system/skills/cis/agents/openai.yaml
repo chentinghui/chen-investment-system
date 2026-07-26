@@ -1,0 +1,4 @@
+interface:
+  display_name: "陈氏投资系统"
+  short_description: "统一调度股票、ETF、估值、业绩、风险与组合投资研究流程"
+  default_prompt: "使用 $cis（陈氏投资系统）选择研究模式、检查资料就绪度并形成可复盘的中文结论。"

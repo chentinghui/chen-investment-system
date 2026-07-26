@@ -1,0 +1,4 @@
+interface:
+  display_name: "股票研究助手"
+  short_description: "旧版中文入口；将股票研究任务转交陈氏投资系统"
+  default_prompt: "使用 $stock-research-assistant 将我的研究需求转交陈氏投资系统。"
