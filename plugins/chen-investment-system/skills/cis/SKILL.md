@@ -25,6 +25,7 @@ description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一
 - 证据和置信度：`references/evidence-confidence.md`
 - 个人投资规则：`references/investor-profile.md`
 - 跟踪与复盘：`references/research-lifecycle.md`
+- 跨境 ETF、QDII、IOPV 或场内溢价：`references/cross-border-etf-premium.md`
 
 ## 入口与模块边界
 
@@ -94,6 +95,9 @@ evidence_provided: 用户提供的文件、数字、链接或无
 - 不得在缺少透明假设时将护城河判断转换成目标价。
 - 不得机械平均模块置信度、情景概率或目标价。
 - ETF 缺少基准方法、费用和有日期的持仓数据时，不得判断重合度或集中度。
+- 跨境 ETF / QDII 必须先核验精确基准，并区分同一基准、高持仓重合和共享风险因子；不得把相近产品笼统称为完全重复。
+- 跨境 ETF / QDII 的溢价判断必须比较当前、建仓时和产品自身历史分布；风险提示公告或绝对高溢价不能单独构成减持、退出依据。
+- 建仓时 IOPV、历史溢价或申赎/额度状态不足时，必须标记缺口，不得反推溢价变化或套用通用卖出阈值。
 - 组合缺少权重和约束时，不得给仓位或再平衡动作。
 - 资料陈旧、冲突或覆盖不足时，降低就绪状态和置信度，必要时返回 `证据不足`。
 - 默认使用简体中文；路径、代码、Ticker、API、Skill 和原始错误信息保留原文。

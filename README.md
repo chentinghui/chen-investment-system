@@ -18,7 +18,7 @@ chen-investment-system/
 │     │  ├─ SKILL.md
 │     │  ├─ agents/openai.yaml
 │     │  ├─ references/
-│     │  └─ scripts/validate_cis.py
+│     │  └─ scripts/
 │     └─ stock-research-assistant/
 │        ├─ SKILL.md
 │        └─ agents/openai.yaml
@@ -79,6 +79,7 @@ OpenAI Public Equity Investing 可作为可选增强，承担财务标准化、�
 - [模块路由](plugins/chen-investment-system/skills/cis/references/module-routing.md)
 - [输入输出契约](plugins/chen-investment-system/skills/cis/references/io-contract.md)
 - [证据与置信度](plugins/chen-investment-system/skills/cis/references/evidence-confidence.md)
+- [跨境 ETF / QDII 溢价纪律](plugins/chen-investment-system/skills/cis/references/cross-border-etf-premium.md)
 
 ## 安装
 
@@ -170,6 +171,14 @@ evidence_provided: 用户提供的文件、数字、链接或无
 
 只有持仓、权重、成本、基准、约束和资金需求充分时，才使用 `维持`、`考虑增持`、`考虑减持`、`考虑退出` 或 `暂不操作`。这些是研究姿态，不是交易指令。
 
+### 跨境 ETF / QDII
+
+分析场内溢价时，CIS 先核验精确跟踪基准，再区分“同一基准”“高持仓重合”和“共享风险因子”。对现有持仓，必须把当前溢价与建仓时溢价、产品自身历史分布、申赎/额度状态一并比较。
+
+风险提示公告只触发复核，不自动等于卖出信号；系统也不使用脱离产品历史和建仓条件的通用阈值。缺少建仓 IOPV、历史样本或组合约束时，只能给条件化研究姿态，不能给精确卖出或再平衡清单。
+
+仓库附带 `analyze_etf_premium.py`，只计算当前、建仓和历史溢价位置，不生成交易动作。
+
 ## 依赖与降级行为
 
 | 能力 | 类型 | 未安装或不可用时 |
@@ -192,7 +201,9 @@ evidence_provided: 用户提供的文件、数字、链接或无
 
 ## 当前版本与已知限制
 
-当前版本：`0.1.0`
+当前版本：`0.1.1`
+
+- `0.1.1` 新增跨境 ETF / QDII 产品身份门、建仓溢价与历史区间比较、申赎约束检查及回归测试，防止把绝对高溢价或风险提示公告机械转换成卖出结论。
 
 - 本仓库只包含 CIS 自有总控、规则、验证和旧入口兼容层。
 - 不内置行情、财务数据库或付费数据权限。

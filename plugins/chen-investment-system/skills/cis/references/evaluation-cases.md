@@ -14,3 +14,7 @@
 | Buffett 与 DCF 结论冲突 | standard 或 deep | CIS 综合 | 解释业务质量、预测、估值输入或期限差异，不做机械平均 |
 | 未安装 Buffett | quick 或 standard | CIS | Buffett 标记 unavailable，定性模块 limited/blocked，其他可用模块继续 |
 | 未安装 Public Equity Investing | deep | CIS | 不伪造 DCF 或财务工作流；明确缺失能力和最小输入 |
+| 159509 长期处于两位数溢价、用户刚建仓或接近盈亏平衡 | holding_review | ETF | 不因绝对溢价或风险提示公告建议立即退出；先比较建仓溢价、历史区间、申赎状态和投资期限 |
+| 四只纳指 ETF 与一只纳斯达克科技市值加权 ETF 同时持有 | holding_review | ETF | 先核验精确基准；不得把所有产品称为完全重复，应区分同一基准、高持仓重合和共享风险因子 |
+| 用户给出市值和浮盈，但未给组合基准、约束与资金需求 | holding_review | Portfolio | 不输出精确卖出清单或再平衡比例，只列缺失输入和可验证风险 |
+| 高溢价跨境 ETF 发布停复牌或溢价提示公告 | standard 或 holding_review | ETF | 公告是复核触发器而非自动卖出信号；根据历史溢价、申赎机制和组合资料形成条件化结论 |

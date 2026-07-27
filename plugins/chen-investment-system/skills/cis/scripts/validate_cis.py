@@ -35,12 +35,25 @@ def main() -> int:
     evidence = read(REFS / "evidence-confidence.md")
     profile = read(REFS / "investor-profile.md")
     lifecycle = read(REFS / "research-lifecycle.md")
+    premium = read(REFS / "cross-border-etf-premium.md")
     evaluations = read(REFS / "evaluation-cases.md")
+    premium_analyzer = read(ROOT / "scripts" / "analyze_etf_premium.py")
+    premium_tests = read(ROOT / "scripts" / "test_analyze_etf_premium.py")
     assistant = read(STOCK_ASSISTANT)
 
     require(
         skill,
-        ["唯一用户入口", "quick", "standard", "deep", "holding_review", "ready", "limited", "blocked"],
+        [
+            "唯一用户入口",
+            "quick",
+            "standard",
+            "deep",
+            "holding_review",
+            "ready",
+            "limited",
+            "blocked",
+            "cross-border-etf-premium.md",
+        ],
         "CIS skill",
     )
     require(
@@ -76,7 +89,33 @@ def main() -> int:
     require(evidence, ["A 级", "B 级", "C 级", "D 级", "综合置信度"], "evidence policy")
     require(profile, ["status: 未设置", "maximum_single_position", "drawdown_tolerance"], "profile")
     require(lifecycle, ["research_id", "thesis_falsifiers", "change_since_prior"], "lifecycle")
-    require(evaluations, ["贵州茅台", "ETF", "股票研究助手", "Buffett 与 DCF"], "evaluation cases")
+    require(
+        premium,
+        [
+            "产品身份门",
+            "entry_premium",
+            "结构性溢价",
+            "风险提示公告",
+            "不得设置",
+            "通用阈值",
+        ],
+        "cross-border ETF premium policy",
+    )
+    require(
+        evaluations,
+        ["贵州茅台", "ETF", "股票研究助手", "Buffett 与 DCF", "159509", "完全重复", "精确卖出清单"],
+        "evaluation cases",
+    )
+    require(
+        premium_analyzer,
+        ["def analyze", "current_premium_pct", "entry_premium_pct", "premium_regime"],
+        "ETF premium analyzer",
+    )
+    require(
+        premium_tests,
+        ["159509", "insufficient_history", "rejects_non_positive_values"],
+        "ETF premium tests",
+    )
     require(
         assistant,
         ["旧版中文入口兼容层", "调用 `$cis`", "不在本 Skill 中直接调用"],

@@ -10,7 +10,7 @@
 | Valuation | DCF、可比估值、价格桥接和敏感性 | `external_optional` | 有价格、股本、净负债、预测和透明假设 | `$public-equity-investing` |
 | Earnings | 业绩前预期、业绩后变化和模型影响 | `external_optional` | 有事件日期、业绩材料及明确预期基线 | `$public-equity-investing` |
 | Macro | 利率、通胀、政策、汇率和商品的权益传导 | `external_optional` | 有宏观事实及公司/组合敞口证据 | `$public-equity-investing` |
-| ETF | 指数方法、产品敞口、成分、费用、集中度和重合度 | `external_optional` | 有基金身份、基准方法、费用和注明日期的持仓数据 | `$public-equity-investing` |
+| ETF | 指数方法、产品敞口、成分、费用、集中度、重合度和跨境产品溢价纪律 | `mixed` | 有基金身份、精确基准、费用和注明日期的持仓数据；跨境产品另需 IOPV、历史溢价与申赎状态 | CIS + 可用的 `$public-equity-investing` |
 | Portfolio | 仓位、对冲、组合风险、增减持和跟踪 | `external_optional` | 有持仓、权重及与动作相关的约束 | `$public-equity-investing` |
 | Risk | 结构、财务、情景、流动性、杠杆和论点风险 | `mixed` | 有与风险类型匹配的基础资料 | CIS + 可用外部模块 |
 | Growth | 跑道、单位经济、再投资质量和融资型增长 | `mixed` | 有增长驱动、单位经济及资本需求资料 | CIS + 可用外部模块 |

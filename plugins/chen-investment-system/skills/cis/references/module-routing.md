@@ -13,6 +13,7 @@
 | 业绩后发生了什么变化 | Earnings | `earnings-deep-dive` | `equity-model-update`、Risk |
 | 宏观事件如何影响公司或持仓 | Macro | `economic-impact-report` | Portfolio、情景分析 |
 | 比较 ETF 产品或敞口 | ETF | ETF/index diligence | Portfolio、Risk |
+| 分析跨境 ETF / QDII 溢价或是否切换产品 | ETF | CIS `cross-border-etf-premium.md` | Portfolio、Risk、可用的 ETF/index diligence |
 | 增持、减持、退出、对冲或再平衡 | Portfolio | `portfolio-risk-management` | Risk、`thesis-tracker`、`catalyst-calendar` |
 | 压力测试或寻找证伪条件 | Risk | `scenario-sensitivity-generator` 或 `portfolio-risk-management` | Buffett 卖出标准 |
 | 检验成长逻辑 | Growth | `initiating-coverage` | Financial、Valuation、Buffett |
@@ -27,6 +28,7 @@
 4. 记录数据截止时间、覆盖范围、冲突和缺口。
 5. 按 `ready`、`limited`、`blocked` 标记本次就绪度。
 6. 外部模块缺失时记录 `capability_status: unavailable`，不得伪造调用。
+7. 跨境 ETF / QDII 先核验精确基准、IOPV 时点、历史溢价和申赎状态；缺少这些输入时将 ETF 模块降为 `limited` 或 `blocked`。
 
 ## 防重叠规则
 
@@ -37,5 +39,6 @@
 - Earnings 负责相对预期的变化，不替代长期论点。
 - Macro 负责传导链，不把宏观预测当作公司事实。
 - Portfolio 负责总组合后果；缺少组合背景时单股模块不能决定仓位。
+- ETF 模块只描述产品身份、敞口和溢价证据；不得把风险提示公告或绝对溢价直接转换成卖出动作。
 - Risk 负责下行机制和动作触发条件。
 - Growth、AI Industry 和 Competitive Analysis 是组合视角，不另建重复估值引擎。
