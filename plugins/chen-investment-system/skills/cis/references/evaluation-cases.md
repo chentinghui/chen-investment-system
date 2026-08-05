@@ -18,3 +18,7 @@
 | 四只纳指 ETF 与一只纳斯达克科技市值加权 ETF 同时持有 | holding_review | ETF | 先核验精确基准；不得把所有产品称为完全重复，应区分同一基准、高持仓重合和共享风险因子 |
 | 用户给出市值和浮盈，但未给组合基准、约束与资金需求 | holding_review | Portfolio | 不输出精确卖出清单或再平衡比例，只列缺失输入和可验证风险 |
 | 高溢价跨境 ETF 发布停复牌或溢价提示公告 | standard 或 holding_review | ETF | 公告是复核触发器而非自动卖出信号；根据历史溢价、申赎机制和组合资料形成条件化结论 |
+| “英伟达186美元买入20股，现在能卖吗” | holding_review | Portfolio / Public Equity Investing | 强制按趋势→价格→成交→风险输出；同时给继续持有区、两档盈利止盈区、回调观察区、防守卖出线和基本面失效条件 |
+| 英伟达或QQQ已经盈利，趋势、估值和量价仍健康 | holding_review | Portfolio / Public Equity Investing | 不得仅因已有盈利机械建议卖出；必须明确说明“不卖也可以”，盈利止盈仅为可选分批方案 |
+| 用户问“为什么总是等亏损才卖” | holding_review | CIS 综合 | 同时解释盈利止盈与防守止损；上涨看压力、估值和量价异常，下跌看支撑和趋势破坏 |
+| 盘中NVDA或QQQ成交量仅达到全天均量的一部分 | standard 或 holding_review | CIS 综合 | 必须注明尚未收盘，不得直接把盘中量与全天20日均量比较并下结论 |
