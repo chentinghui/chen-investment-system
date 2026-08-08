@@ -1,4 +1,4 @@
 interface:
   display_name: "陈氏投资系统"
-  short_description: "统一调度股票、ETF、估值、业绩、风险与组合投资研究流程"
-  default_prompt: "使用 $cis（陈氏投资系统）选择研究模式、检查资料就绪度并形成可复盘的中文结论。"
+  short_description: "总控 Agent 协调专家、Skills、证据门、风险门与 0–100 统一评分"
+  default_prompt: "使用 $cis（陈氏投资系统）由陈氏投资分析师总控选择最少专家团队，检查资料就绪度、证据与风险门，并在覆盖充分时生成统一评分和可复盘的中文结论。"
