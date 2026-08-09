@@ -24,6 +24,13 @@ def parse_float(value: Any) -> float | None:
         return None
 
 
+def _required_float(row: dict[str, str], field: str, index: int) -> float:
+    value = parse_float(row.get(field))
+    if value is None:
+        raise ValueError(f"{field} must be a finite number at row {index}")
+    return value
+
+
 def parse_period(value: str) -> datetime:
     text = value.strip()
     for fmt in ("%Y-%m-%d", "%Y-%m"):
@@ -131,22 +138,31 @@ def run_backtest(
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     seen_period_tickers: set[tuple[str, str]] = set()
     for index, row in enumerate(rows):
-        score = parse_float(row.get("score"))
-        forward_return = parse_float(row.get("forward_return"))
         raw_date = str(row.get("date") or "").strip()
         ticker = str(row.get("ticker") or "").strip().upper()
-        if not raw_date or not ticker or score is None or forward_return is None:
-            continue
+        if not raw_date:
+            raise ValueError(f"date is required at row {index}")
+        if not ticker:
+            raise ValueError(f"ticker is required at row {index}")
         parse_period(raw_date)
+        score = _required_float(row, "score", index)
+        forward_return = _required_float(row, "forward_return", index)
         if forward_return < -1.0:
             raise ValueError(f"forward_return cannot be below -100% at row {index}")
         key = (raw_date, ticker)
         if key in seen_period_tickers:
             raise ValueError(f"duplicate ticker within period: {raw_date}/{ticker}")
         seen_period_tickers.add(key)
-        benchmark_return = parse_float(row.get("benchmark_return"))
-        if benchmark_return is not None and benchmark_return < -1.0:
-            raise ValueError(f"benchmark_return cannot be below -100% at row {index}")
+
+        raw_benchmark = row.get("benchmark_return")
+        benchmark_return: float | None
+        if raw_benchmark is None or str(raw_benchmark).strip() == "":
+            benchmark_return = None
+        else:
+            benchmark_return = _required_float(row, "benchmark_return", index)
+            if benchmark_return < -1.0:
+                raise ValueError(f"benchmark_return cannot be below -100% at row {index}")
+
         grouped[raw_date].append({
             "ticker": ticker,
             "score": score,
@@ -219,7 +235,7 @@ def run_backtest(
         "metrics": metrics,
         "metrics_by_segment": metrics_by_segment,
         "period_details": period_details,
-        "warning": "Input must be point-in-time, unique by (date,ticker), and survivorship-bias-aware. This optional extension never changes CIS production rules automatically.",
+        "warning": "Input rows are fail-closed, point-in-time, unique by (date,ticker), and must be survivorship-bias-aware. Missing required score/forward_return rows are rejected, never silently dropped.",
     }
 
 
