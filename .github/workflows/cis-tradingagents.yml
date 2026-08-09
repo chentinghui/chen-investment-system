@@ -1,0 +1,77 @@
+name: CIS TradingAgents Remote Runner
+
+on:
+  push:
+    paths:
+      - "runtime/tradingagents/request.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  models: read
+
+concurrency:
+  group: cis-tradingagents-remote
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout CIS repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install current TradingAgents upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          rm -rf /tmp/TradingAgents
+          git clone --depth 1 https://github.com/TauricResearch/TradingAgents.git /tmp/TradingAgents
+          echo "TRADINGAGENTS_UPSTREAM_SHA=$(git -C /tmp/TradingAgents rev-parse HEAD)" >> "$GITHUB_ENV"
+          python -m pip install /tmp/TradingAgents
+
+      - name: Run TradingAgents through GitHub Models
+        id: tradingagents
+        continue-on-error: true
+        env:
+          GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py \
+            runtime/tradingagents/request.json \
+            runtime/tradingagents/result.json \
+            runtime/tradingagents/result.md
+
+      - name: Commit result back to main
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f runtime/tradingagents/result.json ]; then
+            mkdir -p runtime/tradingagents
+            printf '%s\n' '{"status":"error","runtime_readiness":"remote_limited","error":"runner produced no result file"}' > runtime/tradingagents/result.json
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/tradingagents/result.json runtime/tradingagents/result.md || true
+          if git diff --cached --quiet; then
+            echo "No result changes to commit."
+          else
+            git commit -m "chore: store TradingAgents remote result"
+            git push origin HEAD:main
+          fi
+
+      - name: Surface TradingAgents failure
+        if: steps.tradingagents.outcome != 'success'
+        run: |
+          echo "TradingAgents execution failed; result.json contains the diagnostic."
+          exit 1
