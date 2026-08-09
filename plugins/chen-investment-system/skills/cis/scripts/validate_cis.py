@@ -78,7 +78,7 @@ def main() -> int:
         "execution_status", "research_quality", "CIS 不自动下单",
     ], "CIS skill")
     require(workflow, ["Core Research", "Optional Research Tooling", "extensions/research_tooling/", "fail-closed"], "workflow")
-    require(registry, ["CIS Core", "Extension", "Quant Factor Ranking Engine", "Prediction / Evaluation"], "module registry")
+    require(registry, ["Core Analysis", "Extension", "Quant Factor Ranking Engine", "Prediction / Evaluation"], "module registry")
     require(routing, ["Optional Research Tooling", "extensions/research_tooling/", "Critical Dimension", "7 天 TTL"], "module routing")
     require(external, ["7 天 TTL", "execution_status", "research_quality", "Optional Research Tooling", "Market Regime"], "external modules")
     require(methodology, ["7天 TTL", "check_tradingagents_upstream.py", "Critical Dimension", "execution_status"], "TradingAgents methodology")
