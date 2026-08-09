@@ -36,6 +36,7 @@ jobs:
             plugins/chen-investment-system/skills/cis/scripts/score_cis.py \
             plugins/chen-investment-system/skills/cis/scripts/analyze_etf_premium.py \
             plugins/chen-investment-system/skills/cis/scripts/classify_market_regime.py \
+            plugins/chen-investment-system/skills/cis/scripts/tactical_setup_gate.py \
             plugins/chen-investment-system/skills/cis/scripts/check_tradingagents_upstream.py \
             plugins/chen-investment-system/skills/cis/scripts/run_tradingagents.py \
             plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py \
