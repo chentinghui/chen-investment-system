@@ -1,145 +1,187 @@
 # 陈氏投资系统（Chen Investment System，CIS）
 
-陈氏投资系统是面向中文投资研究的统一总控插件。它把股票、上市公司、ETF、投资组合、财报、估值、宏观、成长、AI 行业、竞争分析与风险研究组织成一条有证据、有边界、可复盘的工作流。
+陈氏投资系统是面向中文投资研究的统一总控插件。它把股票、上市公司、ETF、投资组合、财报、估值、宏观、成长、AI 行业、竞争分析与风险研究组织成一条有证据、有边界、可评分、可复盘的工作流。
 
-CIS 不承诺自动获得市场数据，也不把任何单一分析框架当作最终决策者。它负责定义问题、检查资料就绪度、选择一个主模块、调度最少数量的支持模块、解释冲突，并形成带资料截止时间、置信度、证伪条件和下一步的中文研究结论。
+当前版本：**0.2.0**
 
-## 项目形态
+## 核心定位
 
-本仓库同时是一个可安装的 GitHub repo marketplace：
+CIS 不把任何单一专家、单一 Skill、单一估值方法或单一数据源当作最终决策者。
+
+它负责：
+
+- 定义研究问题；
+- 校验当前 CIS 版本和资料截止时间；
+- 检查数据与能力就绪度；
+- 选择一个主专家和最少数量支持专家；
+- 调度专业金融 Skills；
+- 维护证据门与风险门；
+- 解释专家冲突；
+- 运行八维统一评分；
+- 在涉及买卖时执行四层交易框架；
+- 结合组合约束形成最终中文研究姿态；
+- 生成证伪条件与复盘计划。
+
+## 当前架构
 
 ```text
-chen-investment-system/
-├─ .agents/plugins/marketplace.json
-├─ plugins/chen-investment-system/
-│  ├─ .codex-plugin/plugin.json
-│  └─ skills/
-│     ├─ cis/
-│     │  ├─ SKILL.md
-│     │  ├─ agents/openai.yaml
-│     │  ├─ references/
-│     │  └─ scripts/
-│     └─ stock-research-assistant/
-│        ├─ SKILL.md
-│        └─ agents/openai.yaml
-├─ LICENSE
-└─ README.md
+用户
+  ↓
+陈氏投资系统 CIS
+  ↓
+陈氏投资分析师（唯一总控 Agent）
+  ↓
+任务标准化 + Runtime Guard + 资料就绪度
+  ↓
+最小专家团队
+  ├─ 基本面与财务分析师
+  ├─ 成长与竞争分析师
+  ├─ 估值分析师
+  ├─ 技术与市场结构分析师
+  ├─ 宏观与催化剂策略师
+  ├─ 定位与资金流分析师
+  ├─ 风险经理
+  ├─ 证据审计员
+  └─ 组合与仓位经理（组合数据门满足时）
+  ↓
+专业 Skills / 数据 / 外部方法
+  ├─ Anthropic Financial Services（首选专业金融 Skill 上游）
+  ├─ Buffett Skills（可选长期所有者视角）
+  └─ 可用的一手数据、连接器和公开来源
+  ↓
+证据门 + 风险门 + 冲突处理
+  ↓
+CIS 八维统一评分（0–100）
+  ↓
+四层交易框架 / 组合约束（如适用）
+  ↓
+最终中文研究姿态 + 证伪条件 + 跟踪复盘
 ```
 
-- `cis` 是唯一用户入口和最终研究结论所有者。
-- `stock-research-assistant` 只保留为旧中文入口兼容层，并立即转交 CIS。
-- Buffett 与 OpenAI Public Equity Investing 是外部专业模块；其源码不包含在本仓库中。
+## CIS 自己维护什么
 
-## 架构与模块边界
+以下能力属于 CIS 核心，不交给外部 Skill 覆盖：
 
-```mermaid
-flowchart TD
-    U["用户：自然语言或 @陈氏投资系统"] --> C["CIS 总控"]
-    C --> G["资料就绪度与风险门"]
-    G --> B["Buffett 定性所有者视角（外部，可选）"]
-    G --> P["Public Equity Investing（外部，可选）"]
-    G --> S["CIS 内置证据、路由与降级规则"]
-    B --> R["CIS 综合结论"]
-    P --> R
-    S --> R
-    R --> O["中文输出、置信度、证伪条件与复盘计划"]
+- 唯一总控和 Agent 编排；
+- 证据等级、截止时间和冲突纪律；
+- 风险门与风险经理 override；
+- 八维评分与 coverage gate；
+- 四层交易框架；
+- 盈利止盈 + 防守止损双向卖出；
+- 跨境 ETF / QDII 产品身份、IOPV、历史溢价和申赎纪律；
+- 组合数据门；
+- 中文研究姿态、证伪条件和复盘机制。
+
+## Anthropic Financial Services 的定位
+
+CIS 0.2.0 将 Anthropic `financial-services` 设为首选专业金融 Skill 上游。
+
+上游仓库：
+
+```text
+https://github.com/anthropics/financial-services
 ```
 
-### Buffett 的定位
+当前主要映射包括：
 
-Buffett 是 CIS 内置调度逻辑中的“专业定性分析模块/外部依赖”，用于：
+| CIS 任务 | Anthropic Skill |
+|---|---|
+| DCF | `dcf-model` |
+| 可比估值 | `comps-analysis` |
+| 三表模型 | `3-statement-model` |
+| 模型审计 | `audit-xls` |
+| 数据清洗 | `clean-data-xls` |
+| 竞争分析 | `competitive-analysis` |
+| 财报后分析 | `earnings-analysis` |
+| 财报前预览 | `earnings-preview` |
+| 首次覆盖 | `initiating-coverage` |
+| 模型更新 | `model-update` |
+| 行业/主题研究 | `sector-overview` |
+| 论点跟踪 | `thesis-tracker` |
+| 催化剂管理 | `catalyst-calendar` |
+| 投资想法生成 | `idea-generation` |
 
-- 商业模式和商业质量；
-- 护城河及其可持续性；
-- 管理层诚信、能力与股东取向；
-- 资本配置、所有者收益和长期持有纪律。
+CIS 优先读取上游当前 `main` 的目标 `SKILL.md`，避免长期依赖陈旧副本。如果使用本地快照，必须记录上游 commit/SHA、同步日期和许可证。
 
-Buffett 不是唯一决策者，也不负责审计级财务标准化、实时市场数据或最终目标价。CIS 必须继续汇总财务、估值、业绩、宏观、组合与风险模块，最终结论始终归 CIS。
-
-本项目不复制 `agi-now/buffett-skills` 源码。发布时该上游仓库未提供明确的 LICENSE，故这里只提供[上游依赖链接](https://github.com/agi-now/buffett-skills)和完全原创的适配/降级规则。使用上游项目前，请自行复核其最新许可证与安装说明。本项目与该上游无隶属、合作或背书关系。
-
-### Public Equity Investing 的定位
-
-OpenAI Public Equity Investing 可作为可选增强，承担财务标准化、估值、业绩、宏观传导、ETF/指数、组合风险、情景分析和研究交付物等工作流。本仓库不复制任何 OpenAI bundled/curated plugin 源码。
-
-## 统一研究流程
-
-1. 标准化研究对象、问题、模式、期限和 `as_of`。
-2. 读取个人投资规则；未设置项保持 `未设置`。
-3. 检查所需模块的能力状态与本次就绪度：`ready`、`limited` 或 `blocked`。
-4. 建立证据登记，区分事实、计算、假设和判断。
-5. 先运行风险门，再选择一个主模块和最少数量的支持模块。
-6. 将模块结果适配为统一返回格式并解释冲突。
-7. 生成研究姿态、证伪条件、跟踪指标和下一复盘日期。
+Anthropic Skill 只提供专业子问题的方法和交付物，不能绕过 CIS 发布最终评分或投资姿态。
 
 详细规则见：
 
-- [系统流程](plugins/chen-investment-system/skills/cis/references/system-workflow.md)
-- [模块登记](plugins/chen-investment-system/skills/cis/references/module-registry.md)
-- [模块路由](plugins/chen-investment-system/skills/cis/references/module-routing.md)
-- [输入输出契约](plugins/chen-investment-system/skills/cis/references/io-contract.md)
-- [证据与置信度](plugins/chen-investment-system/skills/cis/references/evidence-confidence.md)
-- [跨境 ETF / QDII 溢价纪律](plugins/chen-investment-system/skills/cis/references/cross-border-etf-premium.md)
+- `plugins/chen-investment-system/skills/cis/references/anthropic-financial-services.md`
+- `plugins/chen-investment-system/skills/cis/references/external-modules.md`
 
-## 安装
+## Runtime Guard
 
-### 方式一：GitHub repo marketplace
-
-```bash
-git clone https://github.com/chentinghui/chen-investment-system.git
-cd chen-investment-system
-codex plugin marketplace add .
-codex plugin add chen-investment-system@chen-investment-system
-```
-
-安装或更新后，请新建一个任务，使新的 Skills 被重新发现。
-
-### 方式二：ChatGPT 桌面端 Work 模式
-
-在支持本地 Codex plugins / repo marketplace 的 ChatGPT 桌面端 Work 环境中：
-
-1. 克隆本仓库。
-2. 在 Plugins 或 Marketplace 管理界面添加本仓库根目录；也可在可用终端中执行上面的 `codex plugin marketplace add .`。
-3. 安装 `chen-investment-system@chen-investment-system`。
-4. 新建 Work 任务，在编辑器中选择 `@陈氏投资系统`，或直接用自然语言调用。
-
-不同桌面版本的菜单名称可能不同；以当前客户端显示为准。如果当前环境不支持本地 repo marketplace，可使用下方 Codex Skill 手动兼容方式。
-
-### 方式三：Codex CLI
-
-使用“方式一”的两条 `codex plugin` 命令。检查结果：
-
-```bash
-codex plugin list
-```
-
-如果只需要 Skills、而当前 CLI 不支持 plugin marketplace，可将以下两个目录复制到用户 Skills 目录：
+用户说以下任一表达时：
 
 ```text
-plugins/chen-investment-system/skills/cis
-plugins/chen-investment-system/skills/stock-research-assistant
+用陈氏投资系统分析……
+启动投资总控……
+用我的投资系统分析……
+股票研究助手分析……
 ```
 
-例如放入 `~/.codex/skills/` 下对应的同名目录。不要复制整个第三方插件缓存。
+CIS 必须先：
 
-## 调用示例
+1. 读取当前 CIS `SKILL.md`；
+2. 读取必读 references；
+3. 能访问 GitHub 时优先核验 `chentinghui/chen-investment-system` 的 `main`；
+4. 禁止仅凭聊天记忆恢复旧权重或旧流程；
+5. 专业金融任务按 Anthropic 上游映射执行；
+6. 外部 Skill 结果必须回到 CIS，通过证据门、风险门、统一评分与必要的交易/组合框架后才能形成最终结论。
 
-在支持插件 mention 的界面中：
+## 八维统一评分
+
+| 维度 | 权重 |
+|---|---:|
+| fundamentals | 20 |
+| growth | 15 |
+| valuation | 15 |
+| industry_competitive | 10 |
+| technical | 15 |
+| catalyst_macro | 10 |
+| positioning | 5 |
+| risk_resilience | 10 |
+| **合计** | **100** |
+
+缺失维度不补零、不猜测。
 
 ```text
-@陈氏投资系统 分析腾讯控股，模式用 standard，资料截止到今天。
+coverage < 70%        → insufficient，不输出单一总分
+70% <= coverage < 85% → provisional
+coverage >= 85%       → 质量门通过后才可 decision_grade
 ```
 
-自然语言入口：
+分数不是自动交易信号。
 
-```text
-用陈氏投资系统分析贵州茅台是否值得进入深入研究。
-启动投资总控，比较沪深300 ETF 和中证红利 ETF 的定位、费用、持仓重合与主要风险。
-用陈氏投资系统复盘 AAPL 最新财报是否改变了原投资论点。
-股票研究助手分析宁德时代。
-```
+## 四层交易框架
 
-最后一句会进入兼容 Skill，再转交 CIS。
+涉及买入、持有、加仓、减仓、止盈、止损、退出或具体价位时，固定按以下顺序：
+
+1. **趋势层**：20日、50日、200日均线及趋势状态；
+2. **价格层**：前高、前低、突破位、缺口、支撑和压力；
+3. **成交层**：成交密集区、相对均量和量价确认；
+4. **风险层**：成本、权重、集中度、回撤承受力、资金需求和分批比例。
+
+固定原则：
+
+> 先看趋势决定持有方向，再看价格寻找位置，再看成交确认真假，最后用风险层决定仓位。
+
+卖出分析必须同时包含：
+
+- 盈利止盈路径；
+- 防守止损路径。
+
+不得只给亏损后的卖点，也不得仅因已经盈利或涨幅较大就机械建议卖出。
+
+## 研究模式
+
+- `quick`：总控 + 1 个主专家；关键风险/证据才加审计。
+- `standard`：总控 + 主专家 + 风险经理 + 证据审计员；按问题增加 1–2 个支持专家。
+- `deep`：总控 + 3–6 个相关专家 + 风险经理 + 证据审计员。
+- `holding_review`：总控 + 技术与市场结构 + 风险经理 + 组合与仓位经理 + 与论点相关专家。
+
+默认模式：`standard`。
 
 ## 标准输入
 
@@ -158,68 +200,112 @@ evidence_provided: 用户提供的文件、数字、链接或无
 
 缺失字段只有在会改变研究路线或结论时才询问。
 
-## 输出约定
+## 研究姿态
 
-每个模块返回 `capability_status`、`runtime_readiness`、资料截止时间、发现、证据、计算、假设、风险、证伪条件、三类置信度、开放问题和下一复盘日期。
-
-没有完整组合背景时，CIS 只使用：
+没有完整组合背景时，只使用：
 
 - `进入深入研究`
 - `继续观察`
 - `暂时回避`
 - `证据不足`
 
-只有持仓、权重、成本、基准、约束和资金需求充分时，才使用 `维持`、`考虑增持`、`考虑减持`、`考虑退出` 或 `暂不操作`。这些是研究姿态，不是交易指令。
+持仓、权重、成本、基准、约束和资金需求足够时，才可使用：
 
-### 跨境 ETF / QDII
+- `维持`
+- `考虑增持`
+- `考虑减持`
+- `考虑退出`
+- `暂不操作`
 
-分析场内溢价时，CIS 先核验精确跟踪基准，再区分“同一基准”“高持仓重合”和“共享风险因子”。对现有持仓，必须把当前溢价与建仓时溢价、产品自身历史分布、申赎/额度状态一并比较。
+这些是研究姿态，不是自动交易指令。
 
-风险提示公告只触发复核，不自动等于卖出信号；系统也不使用脱离产品历史和建仓条件的通用阈值。缺少建仓 IOPV、历史样本或组合约束时，只能给条件化研究姿态，不能给精确卖出或再平衡清单。
+## 关键文件
 
-仓库附带 `analyze_etf_premium.py`，只计算当前、建仓和历史溢价位置，不生成交易动作。
+```text
+plugins/chen-investment-system/
+├─ agents/
+│  ├─ chen-chief-investment-analyst.md
+│  ├─ fundamental-financial-analyst.md
+│  ├─ growth-competitive-analyst.md
+│  ├─ valuation-analyst.md
+│  ├─ technical-market-analyst.md
+│  ├─ macro-catalyst-strategist.md
+│  ├─ positioning-flow-analyst.md
+│  ├─ risk-manager.md
+│  ├─ evidence-auditor.md
+│  └─ portfolio-manager.md
+└─ skills/cis/
+   ├─ SKILL.md
+   ├─ references/
+   │  ├─ system-workflow.md
+   │  ├─ agent-registry.md
+   │  ├─ agent-orchestration.md
+   │  ├─ agent-contract.md
+   │  ├─ scoring-engine.md
+   │  ├─ module-registry.md
+   │  ├─ module-routing.md
+   │  ├─ anthropic-financial-services.md
+   │  ├─ evidence-confidence.md
+   │  ├─ four-layer-trading-framework.md
+   │  ├─ cross-border-etf-premium.md
+   │  └─ research-lifecycle.md
+   └─ scripts/
+```
 
-## 依赖与降级行为
+## 安装
 
-| 能力 | 类型 | 未安装或不可用时 |
-|---|---|---|
-| CIS | 内置、必需 | 总控、证据登记、风险门和基础研究仍可运行 |
-| Buffett | 外部、可选 | 定性所有者模块标记 `limited` 或 `blocked`；CIS 不伪造 Buffett 输出 |
-| OpenAI Public Equity Investing | 外部、可选增强 | 对应财务、估值、业绩、宏观、ETF 或组合工作流标记 `limited` / `blocked`，并列出最小缺失能力或数据 |
-| 数据连接器 | 外部、按任务 | 不得声称已运行；可以改用用户资料或公开来源，并降低置信度 |
+### GitHub repo marketplace
 
-完整降级规则见[外部模块适配](plugins/chen-investment-system/skills/cis/references/external-modules.md)。
+```bash
+git clone https://github.com/chentinghui/chen-investment-system.git
+cd chen-investment-system
+codex plugin marketplace add .
+codex plugin add chen-investment-system@chen-investment-system
+```
 
-## 证据等级与置信度
+安装或更新后，建议新建一个任务，使新的 Skills 被重新发现。
+
+### Codex CLI
+
+检查安装：
+
+```bash
+codex plugin list
+```
+
+若当前 CLI 只支持 Skills，可将以下目录复制到用户 Skills 目录：
+
+```text
+plugins/chen-investment-system/skills/cis
+plugins/chen-investment-system/skills/stock-research-assistant
+```
+
+## 证据等级
 
 - **A 级**：监管申报、交易所/基金公司正式资料、经审计财报、官方公告。
 - **B 级**：公司投资者资料、业绩发布、管理层原始讲话、权威政府或行业数据。
 - **C 级**：可靠市场数据商、主流财经媒体、方法透明的第三方研究。
 - **D 级**：聚合页面、二手摘要、社交媒体、未披露方法的估算。
 
-系统分别评估 `Evidence confidence`、`Thesis confidence` 和 `Valuation confidence`。综合置信度不得高于与最终结论最相关的最低等级。
+系统分别评估 `Evidence confidence`、`Thesis confidence` 和 `Valuation confidence`。
 
-## 当前版本与已知限制
+## 依赖与降级
 
-当前版本：`0.1.1`
+| 能力 | 类型 | 不可用时 |
+|---|---|---|
+| CIS | 内置、必需 | 总控、证据登记、风险门和基础研究仍可运行 |
+| Anthropic Financial Services | 首选专业上游 | 对应专业模块标记 `limited` 或 `blocked`；不得伪造已运行输出 |
+| Buffett | 外部、可选 | 定性所有者模块标记 `limited` 或 `blocked` |
+| 数据连接器 | 外部、按任务 | 改用用户资料或公开来源，并降低置信度 |
 
-- `0.1.1` 新增跨境 ETF / QDII 产品身份门、建仓溢价与历史区间比较、申赎约束检查及回归测试，防止把绝对高溢价或风险提示公告机械转换成卖出结论。
+## 许可证与归属
 
-- 本仓库只包含 CIS 自有总控、规则、验证和旧入口兼容层。
-- 不内置行情、财务数据库或付费数据权限。
-- 外部插件“已安装”不等于本次研究数据“已就绪”。
-- Buffett 上游许可证未明确，故不随仓库分发。
-- 不复制 OpenAI 或其他第三方插件源码。
-- GitHub 上的公开 repo marketplace 不等于进入 OpenAI universal public Plugins Directory。若希望所有 ChatGPT 用户直接从公共目录安装，还需要按 OpenAI 当期流程另行提交并通过审核。
+本仓库 CIS 自有代码使用 MIT License。
+
+Anthropic `financial-services` 是独立上游项目，当前适配记录显示其使用 Apache License 2.0；本仓库默认引用/读取其专业 Skills，不宣称其内容为 CIS 原创。任何 vendoring 或再分发前必须重新核验许可证并保留所需归属信息。
+
+Buffett 上游的许可证状态需在安装或再分发前单独复核。
 
 ## 风险声明
 
-本项目用于研究组织、证据核验和分析辅助，不构成投资顾问服务、证券推荐、收益承诺、交易指令、法律或税务意见。市场价格和公司信息会变化；任何结论都必须结合最新资料、个人目标、风险承受能力和独立判断。用户对最终投资决定及其后果自行负责。
-
-## 隐私与安全
-
-仓库不包含 API key、token、邮箱、私密个人账号、会话、记忆、日志、本机配置或机器专属路径；仅在 manifest 中保留公开 GitHub 作者账号。CIS 不会因为插件已安装就假定某个连接器获得授权。
-
-## 许可证与第三方声明
-
-CIS 自有代码和文档采用 [MIT License](LICENSE)。第三方项目、插件、商标和内容不包含在本许可证授权范围内；其权利归各自所有者所有。本项目与 OpenAI、`agi-now/buffett-skills` 及其他外部依赖方无隶属、合作或背书关系。
+本项目用于研究组织、证据核验和分析辅助，不构成投资顾问服务、证券推荐、收益承诺、交易指令、法律或税务意见。市场价格和公司信息会变化；任何结论都必须结合最新资料、个人目标、风险承受能力和独立判断。
