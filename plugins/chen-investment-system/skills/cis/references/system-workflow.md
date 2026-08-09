@@ -1,4 +1,4 @@
-# CIS 0.4.2 系统流程
+# CIS 0.4.3 系统流程
 
 ## 0. Runtime Guard
 
@@ -14,9 +14,21 @@
 
 识别对象、问题、市场、模式、期限、`analysis_date/as_of`、基准和真实持仓资料，并确定 `decision_context`：`generic | long_term | tactical | earnings`。
 
+短线/具体价位任务额外登记：
+
+```text
+analysis_timestamp
+quote_timestamp
+market_session
+price_type
+current_price
+```
+
 ## 2. Evidence
 
 登记来源等级、发布日期、资料期间、提取日期、事实、限制和冲突。历史任务必须防前视偏差。
+
+短线任务执行 Evidence Freshness Guard：价格/成交/技术必须有明确数据截止时间，Breaking News / Catalyst 必须检查当前最新公开信息；新鲜度不清楚时 Evidence Audit 不得 `pass`。
 
 ## 3. Core Research
 
@@ -49,21 +61,38 @@ Evidence 与 Risk 都采用 fail-closed：未明确 `pass` 就不能进入 `deci
 ```text
 generic   → fundamentals + valuation + risk_resilience
 long_term → fundamentals + growth + valuation + risk_resilience
-tactical  → technical + risk_resilience
+tactical  → technical + risk_resilience + price_context check + catalyst_event_review check
 earnings  → fundamentals + catalyst_macro + risk_resilience
 ```
 
+`tactical` 的额外检查只要求“检查已完成”，不要求一定存在正面催化剂。
+
 - coverage < 70%：insufficient；
 - 70%–<85%：provisional；
-- >=85% + Audit pass + Risk pass + Critical Dimensions 完整：才可 decision_grade。
+- >=85% + Audit pass + Risk pass + Critical Dimensions/Context Checks 完整：才可 decision_grade。
 
 ## 7. Market Regime（按需）
 
 当前市场环境会改变交易计划时，输出 `risk_on / neutral / risk_off / insufficient`。Regime 不直接机械触发买卖。
 
-## 8. 四层交易框架
+每个已使用 Regime 信号必须登记独立 `signal_as_of`。缺失日期、未来日期或超过 baseline 新鲜度容忍范围时，Regime 降级为 `insufficient` 或拒绝输入。
+
+## 8. 四层交易框架 + Tactical Gate
 
 涉及买卖、持仓、止盈止损或具体价位时执行：趋势 → 价格 → 成交 → 风险。卖出必须同时覆盖盈利止盈与防守止损。
+
+对 `decision_context=tactical` 或明确短线做差价的买入问题，再执行 `scripts/tactical_setup_gate.py`：
+
+```text
+Price / Session Guard
+Entry Zone
+Chase Limit
+Stop / Invalidation
+Target 1 / Target 2
+Reward / Risk
+```
+
+Quality Score 高不代表当前价格可追。越过 Chase Limit 时输出 `blocked_do_not_chase`；未进入 Entry Zone 时输出 `wait_for_entry`。
 
 ## 9. ETF / QDII / Portfolio Gate
 
@@ -71,7 +100,17 @@ earnings  → fundamentals + catalyst_macro + risk_resilience
 
 ## 10. Synthesis
 
-输出最终中文分析结论、评分 coverage、关键维度状态、为什么不是更高/更低分、价位/风险条件、关键证伪条件和复盘触发点。
+输出最终中文分析结论、评分 coverage、关键维度/上下文检查状态、为什么不是更高/更低分、价位/风险条件、关键证伪条件和复盘触发点。
+
+短线结论必须区分：
+
+```text
+公司质量/研究姿态
+vs
+当前 Tactical Setup 状态
+```
+
+避免把“好公司”直接等同于“现在值得买”。
 
 ## 11. Optional Research Tooling
 
@@ -85,7 +124,7 @@ extensions/research_tooling/
 - 新规则/因子/阈值验证 → `backtest_factor_strategy.py`；
 - 用户明确要求记录/复盘/校准 → Prediction / Evaluation 工具。
 
-这些外围工具不属于默认单股分析链，故障不得阻塞 CIS Core，也不得自动修改生产规则。
+这些外围工具不属于默认单股分析链，故障不得阻塞 CIS Core，也不得自动修改生产规则。可选 Prediction/Evaluation 的默认观察周期调整为短线导向的 5/20/60 交易日；仍保持 experimental，不作为 CIS Core 的必要条件。
 
 ## 12. 原版 TradingAgents 测试路径
 
