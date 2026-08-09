@@ -1,4 +1,4 @@
-# CIS 0.4.4 模块登记表
+# CIS 0.4.5 模块登记表
 
 CIS 采用 **Core Analysis + Optional Research Tooling** 分层，避免把筛选、回测、记录和绩效系统塞进日常单股分析链。
 
@@ -13,16 +13,16 @@ CIS 采用 **Core Analysis + Optional Research Tooling** 分层，避免把筛�
 | Tactical Context Checks | Price Context + Catalyst/Event Review 完成检查 | `installed` | **Core, tactical** | 质量门 |
 | CIS Scoring | 八维加权 + coverage；短线仍保持 Research Grade 与交易赔率分离 | `production_heuristic_pending_calibration` | **Core** | 无单独动作权 |
 | Market Regime Layer | profile化 risk_on / neutral / risk_off + fresh-signal filtering | `experimental` | **Core, 按需** | 无 |
-| Price / Session Guard | XNAS/XNYS 时段推导、quote freshness、last-close session 校验 | `installed` | **Core, tactical** | 质量门 |
-| Tactical R/R Gate | Entry/Stop Type/Target/Chase Limit/RR + Setup Lifecycle | `installed_baseline` | **Core, tactical** | 质量门 |
+| Price / Session Guard | US-equity common session baseline、quote observation session、freshness、last-close session 校验 | `installed` | **Core, tactical** | 质量门 |
+| Tactical R/R Gate | Entry/Stop Type/Target/Chase Limit/RR + persistent Setup Lifecycle | `installed_baseline` | **Core, tactical** | 质量门 |
 | Trading Framework | 趋势→价格→成交→风险；止盈+止损 | `installed` | **Core** | 质量门 |
 | ETF / QDII Gate | 产品身份、溢价、申赎、时差、流动性 | `installed` | **Core** | 质量门 |
 | Portfolio Gate | 成本、权重、集中度、约束、资金需求 | `installed` | **Core, 按需** | 质量门 |
 | Anthropic Financial Services | DCF、Comps、财报、模型、竞争、论点/催化剂 | `upstream_preferred` | **External, 按需** | 无 |
-| Original TradingAgents Runtime | 官方 Python 多 Agent 运行 | `explicit_test_only` | **External test** | 无 |
-| Quant Factor Ranking Engine | 大股票池候选排序 | `experimental` | **Extension** | 无 |
-| Backtest / Validation | 因子/规则/阈值历史验证 | `experimental` | **Extension** | 无 |
-| Prediction / Evaluation | 可选研究记录、结果和校准；默认5/20/60交易日 | `experimental_optional` | **Extension** | 无 |
+| Original TradingAgents Runtime | 官方 Python 多 Agent 运行；secret-backed 仅 reviewed SHA | `explicit_test_only` | **External test** | 无 |
+| Quant Factor Ranking Engine | 大股票池候选排序；同一 as_of、ticker 唯一、最小横截面观测 | `experimental` | **Extension** | 无 |
+| Backtest / Validation | 因子/规则/阈值历史验证；(date,ticker) 唯一 | `experimental` | **Extension** | 无 |
+| Prediction / Evaluation | 可选研究记录、结果和校准；默认5/20/60交易日；公开 allowlist | `experimental_optional` | **Extension** | 无 |
 
 外围研发工具统一位于：
 
@@ -33,12 +33,24 @@ extensions/research_tooling/
 ## 路由边界
 
 - 日常单股分析：只要求 Core；
-- 短线/具体买点：Core 内增加 Exchange-aware Price/Session Guard + Quote Freshness + Tactical R/R Gate；
+- 短线/具体买点：Core 内增加 Price/Session Guard + Quote Freshness + Tactical R/R Gate；
 - 大股票池/Top N：按需启用 Quant Extension；
 - 规则有效性验证：按需启用 Backtest Extension；
 - 用户明确要求记录、复盘或校准：按需启用 Prediction/Evaluation Extension；
 - Extension 故障不得阻塞 Core；
 - Extension 不能自动改生产评分权重或发布最终买卖动作。
+
+## 0.4.5 安全边界
+
+Original TradingAgents Remote Runner 分为：
+
+```text
+Prepare/Analyze: contents: read
+      ↓ Artifact
+Trusted Publisher: contents: write, 无 LLM Secret, 不执行第三方代码
+```
+
+Cloud/secret-backed execution 只有当当前 upstream SHA 与 `reviewed_sha` 一致时才允许。NVIDIA profile 只使用 NVIDIA 固定 endpoint + `NVIDIA_API_KEY`；custom profile 只使用 HTTPS endpoint + `OPENAI_COMPATIBLE_API_KEY`。
 
 ## 状态说明
 
