@@ -18,7 +18,9 @@ DEFAULT_FACTORS: dict[str, dict[str, Any]] = {
     "valuation_fcf_yield": {"weight": 0.10, "direction": "high"},
     "relative_strength": {"weight": 0.10, "direction": "high"},
     "volatility": {"weight": 0.05, "direction": "low"},
-    "max_drawdown_1y": {"weight": 0.05, "direction": "low"},
+    # Accepted input convention: signed drawdown (-0.35) OR positive magnitude (0.35).
+    # The engine converts this factor to absolute magnitude before ranking, so lower is better.
+    "max_drawdown_1y": {"weight": 0.05, "direction": "low", "transform": "abs"},
 }
 
 
@@ -29,9 +31,21 @@ def parse_float(value: Any) -> float | None:
     if not text:
         return None
     try:
-        return float(text)
+        number = float(text)
     except ValueError:
         return None
+    if number != number or number in {float("inf"), float("-inf")}:
+        return None
+    return number
+
+
+def transform_value(value: float, spec: dict[str, Any]) -> float:
+    transform = spec.get("transform")
+    if transform in {None, "identity"}:
+        return value
+    if transform == "abs":
+        return abs(value)
+    raise ValueError(f"unsupported factor transform: {transform}")
 
 
 def average_percentile_ranks(values: dict[int, float]) -> dict[int, float]:
@@ -69,34 +83,55 @@ def load_factor_config(path: str | None) -> dict[str, dict[str, Any]]:
     for name, spec in factors.items():
         weight = float(spec["weight"])
         direction = str(spec.get("direction", "high")).lower()
+        transform = str(spec.get("transform", "identity")).lower()
         if weight <= 0:
             raise ValueError(f"factor {name} weight must be positive")
         if direction not in {"high", "low"}:
             raise ValueError(f"factor {name} direction must be high or low")
-        normalized[name] = {"weight": weight, "direction": direction}
+        if transform not in {"identity", "abs"}:
+            raise ValueError(f"factor {name} transform must be identity or abs")
+        normalized[name] = {"weight": weight, "direction": direction, "transform": transform}
         total += weight
     for spec in normalized.values():
         spec["weight"] = spec["weight"] / total
     return normalized
 
 
+def validate_as_of(rows: list[dict[str, str]]) -> str:
+    if not rows:
+        raise ValueError("input contains no rows")
+    values = {(row.get("as_of") or "").strip() for row in rows}
+    if "" in values:
+        raise ValueError("every row must contain as_of for point-in-time ranking")
+    if len(values) != 1:
+        raise ValueError("all rows must share the same as_of for cross-sectional ranking")
+    return next(iter(values))
+
+
 def score_rows(
     rows: list[dict[str, str]],
     factors: dict[str, dict[str, Any]],
     min_coverage: float = 0.70,
+    *,
+    enforce_same_as_of: bool = True,
 ) -> list[dict[str, Any]]:
     if not rows:
         return []
     if "ticker" not in rows[0]:
         raise ValueError("input CSV must contain ticker column")
+    if not 0 < min_coverage <= 1:
+        raise ValueError("min_coverage must be in (0, 1]")
+    if enforce_same_as_of:
+        validate_as_of(rows)
 
     factor_ranks: dict[str, dict[int, float]] = {}
     for factor, spec in factors.items():
-        available = {
-            idx: value
-            for idx, row in enumerate(rows)
-            if (value := parse_float(row.get(factor))) is not None
-        }
+        available: dict[int, float] = {}
+        for idx, row in enumerate(rows):
+            parsed = parse_float(row.get(factor))
+            if parsed is None:
+                continue
+            available[idx] = transform_value(parsed, spec)
         ranks = average_percentile_ranks(available)
         if spec["direction"] == "low":
             ranks = {idx: 100.0 - score for idx, score in ranks.items()}
@@ -127,7 +162,7 @@ def score_rows(
 
         results.append(
             {
-                "ticker": row["ticker"],
+                "ticker": row["ticker"].strip().upper(),
                 "as_of": row.get("as_of") or None,
                 "quant_score": quant_score,
                 "factor_coverage": round(coverage, 4),
@@ -147,7 +182,7 @@ def score_rows(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="CIS cross-sectional quant factor engine")
+    parser = argparse.ArgumentParser(description="CIS cross-sectional quant factor ranking engine")
     parser.add_argument("input_csv")
     parser.add_argument("--config", help="Optional factor config JSON")
     parser.add_argument("--min-coverage", type=float, default=0.70)
@@ -159,10 +194,12 @@ def main() -> int:
         rows = list(csv.DictReader(handle))
 
     factors = load_factor_config(args.config)
+    as_of = validate_as_of(rows)
     payload = {
-        "engine": "cis_quant_research",
+        "engine": "cis_quant_factor_ranking",
         "status": "experimental_uncalibrated",
         "universe": args.universe,
+        "as_of": as_of,
         "factor_config": factors,
         "results": score_rows(rows, factors, args.min_coverage),
     }
