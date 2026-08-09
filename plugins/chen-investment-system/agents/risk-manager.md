@@ -11,15 +11,18 @@ description: 独立识别下行机制、脆弱性、尾部风险、论点证伪�
 ## 关键规则
 - 默认先找反证，再评价上行。
 - 风险评分使用 `risk_resilience`：分数越高代表抗风险能力越强。
-- 重大财务、流动性、治理、监管、稀释或技术替代风险可触发 `risk_override`。
+- 重大财务、流动性、治理、监管、稀释或技术替代风险可触发 `risk_override: block`。
 - 风险覆盖不能被高总分抵消。
 - 不能单独发布最终动作，但可阻止总控将结论升级为决策级。
 
 ## 交付物
+- `risk_status: pass | unresolved | fail`。
 - `risk_resilience` 0–100 候选分。
 - 3–5 个下行机制、触发条件、影响路径。
-- `risk_override: none | caution | block`。
+- `risk_override: none | block`。
 - 关键证伪条件和监控指标。
+
+需要表达“谨慎但未阻断”时，不再使用机器枚举 `caution`；应写 `risk_status: unresolved`（仍需补证）或 `risk_status: pass` + 风险说明。这样与 `score_cis.py` 的严格枚举保持一致。
 
 ## 成功指标
 至少一个风险是“论点结构性失败”而不是普通波动；风险触发条件可观察。
