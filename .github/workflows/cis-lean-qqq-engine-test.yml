@@ -1,0 +1,200 @@
+name: CIS LEAN QQQ Engine Test
+
+on:
+  push:
+    branches:
+      - agent/lean-qqq-sma20-50
+    paths:
+      - "integrations/lean/strategies/qqq_sma20_50/**"
+      - "integrations/lean/cis_lean_adapter.py"
+      - ".github/workflows/cis-lean-qqq-engine-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lean-engine-backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Test strict crossover logic
+        run: |
+          cd integrations/lean/strategies/qqq_sma20_50
+          python -m unittest -v test_strategy_logic.py
+
+      - name: Build public QQQ and cash-rate test dataset
+        shell: bash
+        run: |
+          mkdir -p .tmp_lean/data/custom .tmp_lean/results
+          python - <<'PY'
+          import csv
+          import io
+          import json
+          import urllib.parse
+          import urllib.request
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          def unix(date_text):
+              return int(datetime.strptime(date_text, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+
+          params = urllib.parse.urlencode({
+              "period1": unix("2019-09-01"),
+              "period2": unix("2026-08-08"),
+              "interval": "1d",
+              "events": "history",
+              "includeAdjustedClose": "true",
+          })
+          yahoo_url = f"https://query1.finance.yahoo.com/v8/finance/chart/QQQ?{params}"
+          request = urllib.request.Request(yahoo_url, headers={"User-Agent": "CIS-LEAN-Engine-Test/1.0"})
+          with urllib.request.urlopen(request, timeout=30) as response:
+              yahoo = json.load(response)["chart"]["result"][0]
+
+          fred_url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS3MO"
+          request = urllib.request.Request(fred_url, headers={"User-Agent": "CIS-LEAN-Engine-Test/1.0"})
+          with urllib.request.urlopen(request, timeout=30) as response:
+              fred_text = response.read().decode("utf-8")
+
+          rates = {}
+          last_rate = 0.0
+          for row in csv.DictReader(io.StringIO(fred_text)):
+              value = row.get("DGS3MO", ".")
+              if value not in ("", "."):
+                  last_rate = float(value) / 100.0
+              rates[row["DATE"]] = last_rate
+
+          timestamps = yahoo["timestamp"]
+          quote = yahoo["indicators"]["quote"][0]
+          adjclose = yahoo["indicators"]["adjclose"][0]["adjclose"]
+
+          rows = []
+          carried_rate = 0.0
+          sorted_rate_dates = sorted(rates)
+          rate_index = 0
+          for ts, opn, high, low, close, adj in zip(
+              timestamps,
+              quote["open"], quote["high"], quote["low"], quote["close"], adjclose
+          ):
+              if None in (opn, high, low, close, adj) or close == 0:
+                  continue
+              date = datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
+              while rate_index < len(sorted_rate_dates) and sorted_rate_dates[rate_index] <= date:
+                  carried_rate = rates[sorted_rate_dates[rate_index]]
+                  rate_index += 1
+              factor = float(adj) / float(close)
+              rows.append([
+                  date,
+                  float(opn) * factor,
+                  float(high) * factor,
+                  float(low) * factor,
+                  float(adj),
+                  carried_rate,
+              ])
+
+          if not rows or rows[-1][0] != "2026-08-07":
+              raise SystemExit(f"QQQ dataset does not end on 2026-08-07: {rows[-1][0] if rows else 'empty'}")
+
+          output = Path(".tmp_lean/data/custom/qqq_sma20_50.csv")
+          with output.open("w", newline="", encoding="utf-8") as f:
+              writer = csv.writer(f)
+              writer.writerow(["date", "open", "high", "low", "close", "cash_rate"])
+              writer.writerows(rows)
+          print(f"dataset rows={len(rows)} start={rows[0][0]} end={rows[-1][0]} last_cash_rate={rows[-1][5]:.6f}")
+          PY
+
+      - name: Build LEAN runtime config
+        run: |
+          python -m pip install --quiet json5
+          python - <<'PY'
+          import json
+          import json5
+          import urllib.request
+          from pathlib import Path
+
+          url = "https://raw.githubusercontent.com/QuantConnect/Lean/master/Launcher/config.json"
+          with urllib.request.urlopen(url, timeout=30) as response:
+              config = json5.loads(response.read().decode("utf-8"))
+
+          config["environment"] = "backtesting"
+          config["algorithm-type-name"] = "QqqSma20Sma50SmokeAlgorithm"
+          config["algorithm-language"] = "Python"
+          config["algorithm-location"] = "../../../Algorithm.Python/CIS_QQQ_SMOKE/smoke_main.py"
+          config["data-folder"] = "../../../Data/"
+          config["python-additional-paths"] = ["/Lean/Algorithm.Python/CIS_QQQ_SMOKE"]
+          config["force-exchange-always-open"] = True
+          config["transaction-log"] = "/Lean/Results/transactions.csv"
+          config["results-destination-folder"] = "/Lean/Results"
+          config["job-user-id"] = "0"
+          config["api-access-token"] = ""
+          config["job-organization-id"] = ""
+
+          Path(".tmp_lean/config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+          PY
+
+      - name: Run actual QuantConnect LEAN engine
+        shell: bash
+        run: |
+          docker pull quantconnect/lean:latest
+          docker run --rm \
+            -v "$PWD/integrations/lean/strategies/qqq_sma20_50:/Lean/Algorithm.Python/CIS_QQQ_SMOKE:ro" \
+            -v "$PWD/.tmp_lean/data/custom:/Lean/Data/custom:ro" \
+            -v "$PWD/.tmp_lean/results:/Lean/Results" \
+            -v "$PWD/.tmp_lean/config.json:/Lean/Launcher/bin/Debug/config.json:ro" \
+            quantconnect/lean:latest \
+            --results-destination-folder /Lean/Results | tee .tmp_lean/lean.log
+
+      - name: Parse LEAN result through CIS adapter
+        shell: bash
+        run: |
+          RESULT=$(find .tmp_lean/results -type f -name '*.json' ! -name '*order-events.json' | head -n 1)
+          if [ -z "$RESULT" ]; then
+            echo "No LEAN result JSON found"
+            find .tmp_lean/results -maxdepth 2 -type f -print || true
+            exit 1
+          fi
+          python integrations/lean/cis_lean_adapter.py parse --result "$RESULT" > .tmp_lean/cis-normalized.json
+          cat .tmp_lean/cis-normalized.json
+
+      - name: Assert fixed behavior
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          normalized = json.loads(Path(".tmp_lean/cis-normalized.json").read_text())
+          if normalized["execution_status"] != "success":
+              raise SystemExit(f"adapter did not report success: {normalized}")
+          raw = normalized["statistics_raw"]
+          expected = {
+              "CIS Engine Harness": "QuantConnect LEAN custom-data smoke",
+              "CIS First Buy Signal Date": "2020-04-27",
+              "CIS First Buy Execution Date": "2020-04-28",
+          }
+          for key, value in expected.items():
+              if raw.get(key) != value:
+                  raise SystemExit(f"{key}: expected {value!r}, got {raw.get(key)!r}")
+          if int(raw.get("CIS Strict Cross Executions", "0")) < 20:
+              raise SystemExit(f"too few strict crossover executions: {raw.get('CIS Strict Cross Executions')}")
+          print("STRICT_CROSS_ASSERTIONS_PASSED")
+          PY
+
+      - name: Upload audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cis-lean-qqq-sma20-50-engine-test
+          path: |
+            .tmp_lean/lean.log
+            .tmp_lean/cis-normalized.json
+            .tmp_lean/results/
+          if-no-files-found: warn
+          retention-days: 7
