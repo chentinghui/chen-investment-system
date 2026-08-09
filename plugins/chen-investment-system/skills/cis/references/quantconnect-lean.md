@@ -151,3 +151,29 @@ LEAN 是 External/Optional 能力：
 ## 自动交易边界
 
 当前 CIS **不启用 LEAN live trading / Broker 自动执行**。即使 LEAN 支持 live trading，也只有用户未来明确要求、单独完成 Broker 权限/风控/熔断/审计设计后才可另行评估。当前集成只负责回测和结果解析。
+
+## 上游版本检查
+
+LEAN 复用 TradingAgents 已有的**使用时检查 + 7 天 TTL**机制，不新增定时 GitHub Actions：
+
+```text
+plugins/chen-investment-system/skills/cis/scripts/check_tradingagents_upstream.py
+runtime/tradingagents/upstream-status.json
+```
+
+当任务涉及 LEAN 引擎、版本、回测环境或集成验证时，先运行：
+
+```bash
+python plugins/chen-investment-system/skills/cis/scripts/check_tradingagents_upstream.py --component lean
+```
+
+规则：
+
+- 7 天 TTL 未到：直接使用缓存状态，不访问上游；
+- TTL 到期：检查 `quantconnect/lean` Docker Hub 的最新数字 build tag；
+- 新 tag 与 `reviewed_tag` 不同：只标记 `review_required`；
+- **绝不自动升级** `quantconnect/lean:<tag>`；
+- 新版本必须先通过 CIS LEAN integration / strategy smoke / backtest validation，再人工更新 `reviewed_tag` 与 heavy workflow 的 pinned image；
+- 上游检查暂时不可用时，允许继续使用已审查的稳定 pinned baseline，但不得声称“已确认最新”。
+
+当前 heavy LEAN workflow 的已审查 baseline 为 `quantconnect/lean:17948`。官方 QuantConnect 文档说明本地 LEAN 回测使用 `quantconnect/lean` Docker image，并可通过 `--image` 指定固定版本；官方 Docker Hub 以 build number 标记可用版本。因此 CIS 以 Docker build tag 作为版本检测对象，而不是直接跟踪 GitHub `main`。
