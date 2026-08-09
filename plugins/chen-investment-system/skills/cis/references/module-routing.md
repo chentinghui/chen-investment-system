@@ -213,7 +213,7 @@ LEAN 结果默认：
 ```text
 engine_role = external_quant_validation
 decision_authority = none
-research_quality = unreviewed
+research_quality=unreviewed
 ```
 
 ## 10. Quant研发与策略验证的职责分工
@@ -246,12 +246,23 @@ quote_timestamp
 exchange
 price_type
 current_price
+quote_max_age_seconds
 Entry Zone
 Stop + stop_type
 Target 1
 ```
 
 并执行现有：Price/Session、Quote Freshness、Setup Lifecycle、R/R baseline、Four-layer Trading Gate。
+
+正式状态继续使用：
+
+```text
+invalidated_reprice_required
+setup_expired_reprice_required
+blocked_pending_stop_confirmation
+blocked_do_not_chase
+wait_for_entry
+```
 
 质量分与短线 setup readiness 必须分开。
 
@@ -317,3 +328,14 @@ Intake / as_of
 → Regime / Tactical / ETF / Portfolio Gates（按需）
 → 最终中文结论
 ```
+
+## 16. 现有安全契约兼容
+
+Control Plane v2 不删除 0.4.5 已有的 hardening 语义：
+
+- tactical 必须完成 `price_context` 与 `catalyst_event_review`；
+- Evaluation 样本门槛继续按 unique `research_id` 管理，不把多个 horizon 混成独立实验；
+- 原版 TradingAgents remote 仍采用第三方只读执行与 **Trusted Publisher** 分离写回；
+- LEAN 成功只表示外部引擎执行完成，仍保持 `research_quality=unreviewed`；
+- Price/Session、quote freshness 与 setup lifecycle 的旧状态枚举继续有效；
+- 所有外部 engine 的运行结果都不得绕过 CIS fail-closed quality gates。
