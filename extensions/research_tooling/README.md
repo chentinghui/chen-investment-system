@@ -25,7 +25,11 @@ CIS Core 的职责仅包括：
 1. 分析一只股票时，CIS Core **不得因为这些文件存在而自动运行它们**。
 2. Quant 仅在股票池筛选/Top N 任务按需启用。
 3. Backtest 仅在验证规则有效性时启用。
-4. Evaluation 仅在用户明确要求记录、复盘或校准时启用。
+4. Prediction/Evaluation 仅在用户明确要求记录、复盘或校准时启用。
 5. Extension 故障不得阻塞 CIS Core 的正常股票分析。
 6. Extension 不拥有 CIS 最终动作权，也不得自动修改生产评分权重。
 7. TradingAgents 7 天 TTL 与 Anthropic Financial Services 上游读取策略仍由 CIS Core/对应外部模块规范管理，不属于本扩展。
+
+## 当前定位
+
+该扩展保留研发和复盘能力，但不构成 CIS 的默认数据层或自动绩效系统。未来若启用短期交易评估，可在本扩展中采用 5/20/60 交易日等口径；在正式启用前，不影响 CIS Core 的任何分析结论。
