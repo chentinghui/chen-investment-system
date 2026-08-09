@@ -69,7 +69,7 @@ jobs:
             -p "test_*.py" \
             -v
 
-      - name: Run LEAN Adapter unit tests
+      - name: Run LEAN Integration unit tests
         run: |
           python -m unittest discover \
             -s integrations/lean \
