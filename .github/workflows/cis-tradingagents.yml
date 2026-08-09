@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: cis-tradingagents-remote-v3
+  group: cis-tradingagents-remote-v4
   cancel-in-progress: true
 
 jobs:
@@ -48,10 +48,6 @@ jobs:
           fi
 
           curl -fsSL https://ollama.com/install.sh | sh
-
-          # The installer may start a systemd service with Ollama's CPU default
-          # (4K context). TradingAgents prompts are larger, so replace it with a
-          # controlled 32K-context server for this job.
           sudo systemctl stop ollama 2>/dev/null || true
           pkill -x ollama 2>/dev/null || true
           OLLAMA_CONTEXT_LENGTH=32768 OLLAMA_NUM_PARALLEL=1 nohup ollama serve >/tmp/ollama.log 2>&1 &
