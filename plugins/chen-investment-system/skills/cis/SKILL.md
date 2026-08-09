@@ -5,9 +5,20 @@ description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一
 
 # 陈氏投资系统（CIS）
 
-将 CIS 作为投资研究的唯一用户入口。CIS 由“陈氏投资分析师”总控 Agent 负责定义问题、选择研究深度、检查资料就绪度、调度专业 Agent 与 Skills、解决冲突、统一评分、形成中文结论并建立复盘计划；专家只完成分配给它的工作。
+CIS 是投资研究的唯一用户入口与最终研究结论所有者。由“陈氏投资分析师”总控 Agent 定义问题、选择研究深度、检查资料就绪度、调度专业 Agent 与 Skills、解决冲突、统一评分、形成中文结论并建立复盘计划；专家和外部 Skills 只完成分配给它们的子问题。
 
 用户可直接说 `用陈氏投资系统分析……` 或 `启动投资总控……`。`$cis` 只是内部技术标识。
+
+## Runtime Guard：每次必须先校验当前 CIS
+
+当用户明确调用“陈氏投资系统”“投资总控”“用我的投资系统分析”或等价表达时：
+
+1. 先读取本 `SKILL.md` 与下面列出的必读 references。
+2. 若当前环境可访问 GitHub，优先核验 `chentinghui/chen-investment-system` 的 `main`，不得只凭聊天记忆恢复旧流程或旧权重。
+3. 专业金融方法优先按 `references/anthropic-financial-services.md` 路由到 Anthropic `financial-services` 当前上游或已验证快照。
+4. 目标专业 Skill 未真实读取时，不得声称已经运行；标记 `limited` 或 `blocked`。
+5. 最终评分权重、coverage gate、研究姿态和交易纪律只服从 CIS 当前 references。
+6. 任何外部 Skill 返回后都必须回到 CIS：证据门 → 风险门 → 冲突处理 → 统一评分 → 四层/组合门（如适用）→ 最终结论。
 
 ## 必读资料
 
@@ -17,10 +28,11 @@ description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一
 2. `references/module-registry.md`
 3. `references/module-routing.md`
 4. `references/external-modules.md`
-5. `references/agent-registry.md`
-6. `references/agent-orchestration.md`
-7. `references/agent-contract.md`
-8. `references/scoring-engine.md`
+5. `references/anthropic-financial-services.md`
+6. `references/agent-registry.md`
+7. `references/agent-orchestration.md`
+8. `references/agent-contract.md`
+9. `references/scoring-engine.md`
 
 按需读取：
 
@@ -45,12 +57,21 @@ description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一
 - 风险经理可返回 `risk_override=block`；证据审计员可返回 `audit_status=unresolved`。两者都能阻止结论升级为决策级，但不能单独给最终动作。
 - 专家之间发生冲突时，不投票、不机械平均；按数据截止时间、口径、期限、假设、方法和事实/判断混淆定位冲突。
 
-## 外部模块边界
+## 专业能力边界
 
-- Buffett 是外部、可选的专业定性分析模块。安装且本次就绪时，将商业质量、护城河、管理层诚信与能力、资本配置和长期所有者纪律交给 `$buffett`。
-- OpenAI Public Equity Investing 是外部、可选增强。安装且本次就绪时，将上市权益的财务、估值、业绩、宏观传导、ETF/指数、组合风险、情景分析和研究交付物交给 `$public-equity-investing`，并明确指定工作流。
-- 外部模块不可用时，按 `references/external-modules.md` 标记 `limited` 或 `blocked`；不得伪造模块输出，也不得让缺失模块阻止 CIS 总控本身运行。
-- 不得声称某个数据源、连接器或工作流已运行，除非本次任务实际验证并使用。
+### Anthropic Financial Services
+
+Anthropic `financial-services` 是 CIS 当前首选的专业金融 Skill 上游。适合承担 DCF、Comps、三表模型、模型审计、数据清洗、竞争分析、财报前后研究、首次覆盖、模型更新、行业/主题、论点跟踪、催化剂和想法生成等专业方法。
+
+- 每次调用前按 `references/anthropic-financial-services.md` 核验目标 Skill 路径、上游状态和环境依赖。
+- Anthropic Skill 只负责专业子问题，不拥有 CIS 最终评分、动作标签或研究姿态。
+- Claude/Cowork/MCP/Office 等运行时专属指令只有在当前环境真实具备对应能力时才执行；否则保留金融方法并适配为当前可调用工具。
+
+### Buffett
+
+Buffett 是外部、可选的长期所有者定性模块。安装且本次就绪时，可将商业质量、护城河、管理层诚信与能力、资本配置和长期所有者纪律交给 `$buffett`。
+
+外部模块不可用时，按 `references/external-modules.md` 标记 `limited` 或 `blocked`；不得伪造模块输出，也不得让缺失模块阻止 CIS 总控本身运行。
 
 ## 标准输入
 
@@ -81,15 +102,16 @@ evidence_provided: 用户提供的文件、数字、链接或无
 4. 建立证据登记表，区分事实、计算、假设和判断。
 5. 先运行风险门。
 6. 选择一个主专家和最少数量支持专家，并给专家绑定所需 Skills/外部工作流。
-7. 可并行的专家先独立分析；风险经理优先形成独立 downside memo，证据审计员独立检查来源与推理。
-8. 将专家输出适配为 `references/agent-contract.md` 与 `references/io-contract.md` 的统一返回格式。
-9. 解释专家冲突来自资料、假设、时间跨度还是方法差异；必要时执行一次补证循环。
-10. 满足评分覆盖与质量门后，按 `references/scoring-engine.md` 计算 0–100 CIS 研究评分；覆盖不足时不强行生成总分。
-11. 涉及买卖时机、持仓复盘或具体价位时，严格执行四层结构：趋势层 → 价格层 → 成交层 → 风险层。
-12. 卖出分析必须同时覆盖盈利止盈与防守止损，不得只给亏损后的卖点。
-13. 若组合数据门满足，调用组合与仓位经理把标的结论转换成组合后果；否则不得给精确仓位。
-14. 按所选模式生成中文输出，并说明“为什么不是更高/更低分”。
-15. 生成证伪条件、跟踪指标、触发动作和下一复盘日期。
+7. 专业金融子问题优先按 Anthropic 上游映射执行；不可读取时按降级规则处理，不得猜测。
+8. 可并行的专家先独立分析；风险经理优先形成独立 downside memo，证据审计员独立检查来源与推理。
+9. 将专家输出适配为 `references/agent-contract.md` 与 `references/io-contract.md` 的统一返回格式。
+10. 解释专家冲突来自资料、假设、时间跨度还是方法差异；必要时执行一次补证循环。
+11. 满足评分覆盖与质量门后，按 `references/scoring-engine.md` 计算 0–100 CIS 研究评分；覆盖不足时不强行生成总分。
+12. 涉及买卖时机、持仓复盘或具体价位时，严格执行四层结构：趋势层 → 价格层 → 成交层 → 风险层。
+13. 卖出分析必须同时覆盖盈利止盈与防守止损，不得只给亏损后的卖点。
+14. 若组合数据门满足，调用组合与仓位经理把标的结论转换成组合后果；否则不得给精确仓位。
+15. 按所选模式生成中文输出，并说明“为什么不是更高/更低分”。
+16. 生成证伪条件、跟踪指标、触发动作和下一复盘日期。
 
 ## 统一评分原则
 
@@ -118,7 +140,7 @@ evidence_provided: 用户提供的文件、数字、链接或无
 
 - 不得仅因为“已经盈利”“涨幅较大”或达到固定收益率就机械建议卖出。
 - 盈利止盈区是可选的分批兑现区，不等于必须卖出；趋势、估值和量价健康时可以继续持有。
-- 不得只给防守止损线。买卖或持仓复盘输出必须同时给出继续持有区、第一盈利止盈区、第二盈利止盈区、回调观察区、防守卖出线和基本面失效条件。
+- 买卖或持仓复盘输出必须同时给出继续持有区、第一盈利止盈区、第二盈利止盈区、回调观察区、防守卖出线和基本面失效条件。
 - 具体比例只有在持仓、权重、成本、约束和资金需求足够时才能给出；否则提供条件区间并标记资料缺口。
 - 最终结论必须区分“可以卖”“建议卖”“必须卖”和“暂不卖”。
 
@@ -139,7 +161,7 @@ evidence_provided: 用户提供的文件、数字、链接或无
 - `考虑退出`
 - `暂不操作`
 
-这些标签是研究姿态，不是交易指令或个性化投资建议。
+这些标签是研究姿态，不是自动交易指令。
 
 ## 强制质量门
 
