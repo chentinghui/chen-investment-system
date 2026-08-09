@@ -1,4 +1,4 @@
-# CIS 0.2 系统流程
+# CIS 0.3 系统流程
 
 ## 0. Runtime Guard
 
@@ -6,103 +6,159 @@
 
 1. 先读取当前 CIS `SKILL.md` 与必读 references。
 2. 若当前环境可访问 GitHub，优先核验 `chentinghui/chen-investment-system` 的 `main`；不得凭聊天记忆恢复旧流程或旧权重。
-3. 专业金融方法优先按 `anthropic-financial-services.md` 路由到 Anthropic `financial-services` 当前上游或已验证快照。
-4. 目标 Skill 未真实读取时，不得声称已经运行；按 `limited` / `blocked` 降级。
+3. 读取 `tradingagents.md`；股票/上市公司任务默认先检查 TradingAgents 本次可执行状态。
+4. 读取 `anthropic-financial-services.md`；专业金融子问题按需路由 Anthropic。
+5. 只有实际执行成功的外部模块才能记录为本次运行结果。
 
 ## 1. 任务受理
 
-识别对象、研究问题、市场、模式、期限、截止时间和用户资料。只询问会改变路线或结论的缺失信息。
+识别对象、研究问题、市场、模式、期限、`analysis_date/as_of` 和用户资料。只询问会改变路线或结论的缺失信息。
 
 ## 2. 个人规则
 
 读取 `investor-profile.md`。未设置项保持为空；只有用户明确要求保存或修改时才能写入。
 
-## 3. 模块预检与 Agent 预检
+## 3. 能力与数据预检
 
-区分“能力/上游存在”和“本次任务已就绪”。验证目标工作流或 Anthropic Skill 路径存在、数据类别可用、关键来源可读取，并给出 `ready`、`limited` 或 `blocked`。
+分别检查：
 
-读取 `agent-registry.md`，选择一个主专家和最少数量的支持专家。调度专家前读取 `../../agents/` 中对应角色文件。外部模块不存在时按 `external-modules.md` 降级，不得伪造调用。
+- TradingAgents：包是否可导入、模型 provider、API key、数据 provider、目标市场、历史日期防前视。
+- Anthropic Financial Services：目标 Skill 是否可读取/有验证快照，关键输入是否完整。
+- CIS 内置：评分器、四层交易框架、ETF/QDII规则、组合数据门。
+
+所有模块给出 `ready`、`limited` 或 `blocked`，并记录外部核心的更具体状态。
 
 ## 4. 证据登记
 
 按 `evidence-confidence.md` 登记来源级别、发布日期、资料期间、提取日期、事实、限制和冲突。
 
-## 5. 风险门
+TradingAgents 的输出不是天然 A/B 级证据；其中引用的行情、新闻、财务和情绪数据必须按实际来源重新评级。
 
-在正面论点前检查：资料陈旧、流动性、杠杆、稀释、集中度、监管、技术替代、治理、利益冲突和投资范围。
+## 5. 默认通用研究核心：TradingAgents
 
-若对象为跨境 ETF / QDII，按 `cross-border-etf-premium.md` 额外执行产品身份门和溢价数据门：核验精确基准，登记当前、建仓与历史溢价，以及申赎、额度、时差和流动性状态。
+股票/上市公司任务在 TradingAgents `installed_ready` 时默认执行：
 
-## 6. 专家编排与专业 Skill 调度
+```text
+Fundamentals Analyst
++ Technical Analyst
++ News Analyst
++ Sentiment Analyst
+        ↓
+Bull / Bear Researchers
+        ↓
+Research Manager
+        ↓
+Trader
+        ↓
+Risk Management Team
+        ↓
+Portfolio Manager
+        ↓
+external_decision_candidate
+```
 
-按 `agent-orchestration.md` 执行：
+该候选决策不得直接对用户发布为 CIS 最终动作。
 
-1. 一个主专家负责核心问题；
-2. 支持专家只用于补足关键视角；
-3. Standard/Deep/Holding Review 默认加入风险经理与证据审计员；
-4. 可并行专家先独立分析，避免互相锚定；
-5. 需要 DCF、Comps、三表、模型审计、财报分析、首次覆盖、竞争分析、论点跟踪或催化剂管理时，按 `anthropic-financial-services.md` 选择最小匹配的 Anthropic Skill；
-6. 专家返回统一 `agent-contract.md`；
-7. 冲突按数据、口径、期限、假设、方法逐项解释，不采用多数票。
+## 6. 专业金融子问题：Anthropic Financial Services
 
-## 7. 质量循环
+出现以下需求时，按 `anthropic-financial-services.md` 调最小匹配 Skill：
 
-风险经理返回 `risk_override=block` 或证据审计员返回 `audit_status=unresolved` 时，先执行一次定向补证。仍无法解决则降低对应模块就绪度，不得伪造确定性。
+- DCF / Comps；
+- 三表 / 模型审计 / 数据清洗；
+- earnings preview / earnings analysis；
+- initiating coverage / model update；
+- competitive analysis；
+- sector overview / idea generation；
+- thesis tracker / catalyst calendar。
 
-## 8. 统一评分
+专业结果进入 CIS 证据登记，并用于补充或校正 TradingAgents 通用研究。
 
-按 `scoring-engine.md` 汇总八个维度：
+## 7. Fallback adapters
+
+TradingAgents 为 `upstream_only`、`unavailable` 或 `blocked` 时：
+
+1. 不伪造外部决策。
+2. 原 CIS 专家 Agent 按 `agent-registry.md` 以 fallback adapter 身份运行。
+3. 只调用完成任务所需的最小专家集合。
+4. 证据审计员仍保持独立。
+5. 输出明确说明 TradingAgents 未实际运行及置信度影响。
+
+## 8. 冲突与质量循环
+
+冲突按以下顺序解释：
+
+1. 数据截止时间；
+2. 数据源/市场覆盖；
+3. 会计或指标口径；
+4. 时间跨度；
+5. 预测假设；
+6. 估值方法；
+7. 情绪/新闻短期信号与长期基本面冲突；
+8. 事实与判断混淆。
+
+不得通过多数票、简单平均目标价或简单平均专家置信度消除冲突。
+
+证据审计 `unresolved` 或关键风险 `block` 时，先补证一次；仍失败则降级。
+
+## 9. CIS 八维统一评分
+
+按 `scoring-engine.md` 汇总：
 
 `fundamentals`、`growth`、`valuation`、`industry_competitive`、`technical`、`catalyst_macro`、`positioning`、`risk_resilience`。
 
-- coverage < 70%：不生成单一总分；
-- 70%–85%：provisional；
-- >=85% 且质量门通过：decision_grade。
+- coverage < 70%：不输出单一总分；
+- 70% <= coverage < 85%：`provisional`；
+- coverage >= 85% 且质量门通过：`decision_grade`。
 
-分数不能绕过风险门、证据门或组合约束，也不能自动生成交易动作。
+TradingAgents 的 BUY/SELL/HOLD 或 Portfolio Manager 结论不能直接映射成 CIS 分数。
 
-## 9. 四层结构与双向卖出
+## 10. 四层结构与双向卖出
 
-当任务涉及买入、持有、加仓、减仓、止盈、止损、退出或具体价位时，读取 `four-layer-trading-framework.md`，并严格按以下顺序执行：
+涉及买入、持有、加仓、减仓、止盈、止损、退出或具体价位时，强制执行：
 
 1. 趋势层：20日、50日、200日均线及趋势状态；
-2. 价格层：前高、前低、突破位、缺口、支撑和压力区；
-3. 成交层：成交密集区、相对均量和量价确认；
+2. 价格层：前高、前低、突破位、缺口、支撑和压力；
+3. 成交层：成交密集区、相对均量、量价确认；
 4. 风险层：成本、权重、集中度、回撤承受力、资金需求和分批比例。
 
-对英伟达（NVDA）、QQQ 和纳斯达克100的买卖或持仓复盘，本步骤为强制步骤。
+TradingAgents Technical Analyst 是输入，不替代本步骤。
 
-卖出分析必须同时包含两条路径：
+卖出必须同时覆盖：
 
-- 盈利止盈：上涨时看压力、估值和量价异常，决定是否以及在哪里分批兑现；
-- 防守止损：下跌时看支撑、成交和趋势是否破坏，决定是否降低仓位或退出。
+- 盈利止盈路径；
+- 防守止损路径。
 
-不得只给亏损后的卖点，也不得仅因已经盈利或涨幅较大就机械建议卖出。
+## 11. ETF / QDII 专属门
 
-## 10. 组合门与综合
+跨境 ETF / QDII 不把 TradingAgents 作为默认核心。优先执行 CIS 的产品身份、精确基准、IOPV、历史溢价、申赎、额度、时差和流动性纪律。
 
-持仓、权重、成本、基准、约束和资金需求完整时，组合与仓位经理评估组合后果；否则不得给精确仓位或再平衡比例。
+风险提示公告或绝对高溢价不能单独触发卖出。
 
-总控将专家/Skill 输出转换成统一格式，区分事实、计算、假设和判断，并解释关键冲突。
+## 12. 组合数据门
 
-## 11. 研究姿态
+只有持仓、权重、成本、基准、约束和资金需求足够时，才把候选标的结论转换成精确仓位或再平衡动作。
 
-无组合背景：进入深入研究、继续观察、暂时回避、证据不足。
+TradingAgents Portfolio Manager 的仓位意见若缺少用户真实组合背景，只能作为一般候选，不得直接采用。
 
-组合背景完整：维持、考虑增持、考虑减持、考虑退出、暂不操作。
+## 13. 最终研究姿态
 
-具体动作必须区分“可以卖”“建议卖”“必须卖”和“暂不卖”。盈利止盈区属于可选风险管理方案时，必须明确说明不是强制卖出。
+无完整组合背景：
 
-跨境 ETF / QDII 不得依据单次绝对溢价或风险提示公告直接生成持仓动作；必须先比较建仓溢价和产品自身历史区间。
+- `进入深入研究`
+- `继续观察`
+- `暂时回避`
+- `证据不足`
 
-## 12. 输出
+组合背景完整：
 
-按 `output-modes.md` 生成中文输出。所有模式都必须包含资料截止时间、限制和下一步。
+- `维持`
+- `考虑增持`
+- `考虑减持`
+- `考虑退出`
+- `暂不操作`
 
-评分条件满足时展示总分、覆盖度、分项和“为什么不是更高/更低分”；覆盖不足时说明缺失维度而不是猜分。
+最终结论必须说明 TradingAgents 是否实际运行、Anthropic 专业 Skill 是否实际运行、评分覆盖度、关键冲突和主要限制。
 
-涉及买卖价位时，输出必须同时给出继续持有区、第一盈利止盈区、第二盈利止盈区、回调观察区、防守卖出线和基本面失效条件。
+## 14. 跟踪与复盘
 
-## 13. 跟踪与复盘
-
-按照 `research-lifecycle.md` 记录论点、证伪条件、监控指标、触发动作、下一事件和复盘日期；若存在可比历史评分，记录各维度变化及驱动。
+按照 `research-lifecycle.md` 记录论点、证伪条件、监控指标、下一事件和复盘日期；如 TradingAgents decision log 可用，可作为外部复盘证据，但不能替代 CIS 自己的论点生命周期。
