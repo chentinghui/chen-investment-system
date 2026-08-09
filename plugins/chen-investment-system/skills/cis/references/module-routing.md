@@ -1,10 +1,11 @@
-# CIS 0.4.2 模块路由
+# CIS 0.4.3 模块路由
 
 ## 总原则
 
 CIS 是唯一用户入口和最终质量控制层，但**不是所有工具都属于 Core**。
 
 - 单股票/上市公司研究：默认只走 CIS Core；
+- 短线/具体买点：Core 内追加 Price/Session Guard + Tactical R/R Gate；
 - 大股票池筛选：按需调用 `extensions/research_tooling/quant_factor_engine.py`；
 - 专业估值/财报/模型：按需调用 Anthropic Financial Services；
 - 当前市场环境显著影响交易计划：加 Market Regime；
@@ -21,6 +22,7 @@ CIS 是唯一用户入口和最终质量控制层，但**不是所有工具都�
 | 多空观点 | Bull/Bear 独立反证 | Research Manager | 冲突保留与裁决 |
 | 价值区间/DCF/Comps | ChatGPT-native 上下文 | Anthropic DCF/Comps | valuation + Evidence |
 | 财报前后 | ChatGPT-native News/Fundamentals | Anthropic Earnings | catalyst/valuation 更新 |
+| 短线买入/做差价 | ChatGPT-native Methodology + Price/Session Guard + Tactical R/R Gate | Regime（按需） | Tactical Context Checks + 四层交易 |
 | 买入/卖出/持有 | ChatGPT-native Methodology | Regime（按需） | Critical Dimensions + 四层交易 + Portfolio Gate |
 | 大股票池 Top N | CIS 受理 | **Quant Extension** | 候选再回到 CIS Core 深研 |
 | 量化规则是否有效 | CIS 受理 | **Backtest Extension** | 不自动改生产规则 |
@@ -30,16 +32,30 @@ CIS 是唯一用户入口和最终质量控制层，但**不是所有工具都�
 | 历史复盘/评分校准 | CIS 受理 | **Prediction/Evaluation Extension** | 不自动改生产权重 |
 | 运行原版 TradingAgents | 原版 local/remote | A/B 验证 | external_decision_candidate 仅作输入 |
 
-## Critical Dimension 路由
+## Critical Dimension / Context Check 路由
 
 ```text
 generic   → fundamentals + valuation + risk_resilience
 long_term → fundamentals + growth + valuation + risk_resilience
-tactical  → technical + risk_resilience
+tactical  → technical + risk_resilience + price_context + catalyst_event_review
 earnings  → fundamentals + catalyst_macro + risk_resilience
 ```
 
-关键维度缺失时，即使 coverage >= 85%，仍只能 `provisional`。
+其中 tactical 的 `price_context` 与 `catalyst_event_review` 是“检查是否完成”的布尔门；没有正面催化剂可以是合法研究结论，但未检查不能进入 `decision_grade`。
+
+关键维度或必需上下文检查缺失时，即使 coverage >= 85%，仍只能 `provisional`。
+
+## Tactical Price / R/R 路由
+
+只要用户要求短期差价、明确买入价、追不追、止损或目标价，就运行：
+
+```text
+scripts/tactical_setup_gate.py
+```
+
+输入至少包含带时区 `analysis_timestamp` / `quote_timestamp`、`market_session`、`price_type`、`current_price`、Entry Zone、Stop、Target 1；Chase Limit 和 Target 2 按任务需要。
+
+`last_close` 不得在休市、盘前或盘后语境中冒充实时价。Quality Score 与 Tactical Setup 必须分开报告；好公司在赔率差或超过 Chase Limit 时仍可得到 `wait_for_entry` / `blocked_do_not_chase`。
 
 ## Optional Research Tooling
 
@@ -53,13 +69,15 @@ extensions/research_tooling/
 
 - Quant：只有股票池规模足够大、明确要求排名/筛选/Top N 时运行；横截面必须同一 `as_of`；
 - Backtest：任何准备升级成默认规则的因子/阈值/权重才运行；
-- Prediction/Evaluation：只有用户明确要求记录、复盘或校准时运行；
+- Prediction/Evaluation：只有用户明确要求记录、复盘或校准时运行；默认观察周期为 5/20/60 交易日；
 - 单股分析不得因为这些文件存在而自动运行；
 - Extension 故障不得阻塞 CIS Core。
 
 ## Market Regime 路由
 
 Regime 只修正环境、安全边际和交易节奏，不直接覆盖公司基本面，也不产生机械买卖信号。
+
+每个参与分类的信号必须提供独立 `signal_as_of`；缺失或 stale 时不能把整体 `as_of` 当作所有数据都新鲜。
 
 ## TradingAgents 上游检查
 
@@ -76,8 +94,9 @@ Regime 只修正环境、安全边际和交易节奏，不直接覆盖公司基�
 ## 防重叠规则
 
 - ChatGPT-native Analyst 已覆盖的职责不重复跑同职责 fallback Agent；
+- Tactical Gate 只负责价格语义与赔率几何，不重复基本面/技术研究；
 - Quant 只筛选，不重复做最终公司研究；
 - Anthropic 只负责专业子问题，不拥有最终动作权；
 - Market Regime 不重复技术分析，只提供环境层；
 - Backtest/Evaluation 只验证和复盘，不自动修改生产规则；
-- 最终顺序固定为：证据 → 多角色研究 → 专业增强 → Evidence/Risk → Critical Dimensions → CIS Score → Regime（按需）→ 四层/ETF/组合门 → 最终中文结论。
+- 最终顺序固定为：证据 → 多角色研究 → 专业增强 → Evidence/Risk → Critical Dimensions/Context Checks → CIS Score → Regime（按需）→ Tactical/Four-layer/ETF/组合门 → 最终中文结论。
