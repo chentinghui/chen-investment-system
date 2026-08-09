@@ -18,7 +18,6 @@ As-of: 2026-08-09
 4. 如果使用本地快照，必须记录上游仓库、commit/SHA、同步日期和许可证。
 5. 不把 Claude/Cowork/MCP/Office JS 等运行时假设硬套到当前环境；只执行当前环境真实具备的工具能力。
 6. 上游 Skill 输出必须转换为 CIS `agent-contract.md` / `io-contract.md`，再进入证据门、风险门和评分引擎。
-7. Public Equity Investing 仅作为 legacy fallback，不再是默认专业上游。
 
 ## 上游 Skill 路由表
 
@@ -68,9 +67,8 @@ As-of: 2026-08-09
 3. 在需要专业金融 Skill 时，先查本表并尝试 Anthropic 上游。
 4. 只有目标上游路径本次真实可读取，才可标记 `upstream_skill_status: live_upstream`。
 5. 无法读取时，检查是否存在带版本信息的 vendored snapshot。
-6. 两者都不存在时，标记 `limited/blocked`；不得自动切到旧 Public Equity Investing 并冒充新版 CIS。
-7. 如果确需使用 legacy fallback，输出内部状态 `legacy_fallback: true`，并明确它不能改变 CIS 评分规则。
-8. 任何外部模块返回后，必须回到 CIS：证据门 → 风险门 → 冲突处理 → 统一评分 → 四层/组合门（如适用）→ 最终结论。
+6. 两者都不存在时，标记 `limited/blocked`；不得以旧框架或记忆中的专业流程冒充新版 CIS。
+7. 任何外部模块返回后，必须回到 CIS：证据门 → 风险门 → 冲突处理 → 统一评分 → 四层/组合门（如适用）→ 最终结论。
 
 ## 适配规则
 
