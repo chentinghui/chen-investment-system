@@ -38,10 +38,11 @@ analysis_timestamp
 quote_timestamp
 market_session
 price_type
-quote freshness policy
+quote_max_age_seconds
+quote_session_date（closed / last_close）
 ```
 
-`market_session` 必须由 exchange + timestamp 的交易时段基线验证，不能只相信调用者字符串。活跃时段报价必须有显式允许的最大 age；超过该 age 时 Price Context 直接失败。`last_close` 只能称为“最近收盘参考价”，且 `quote_session_date` 必须对应最近已完成交易日。
+`market_session` 必须由 exchange + timestamp 的交易时段基线验证，不能只相信调用者字符串。活跃时段报价必须有显式允许的最大 `quote_max_age_seconds`；超过该 age 时 Price Context 直接失败。`last_close` 只能称为“最近收盘参考价”，且 `quote_session_date` 必须对应最近已完成交易日。
 
 `scripts/tactical_setup_gate.py` 负责确定性语义检查。特殊临时休市、交易所异常或供应商延迟仍需 Evidence Layer 依据交易所/数据商资料核验；代码日历不能冒充官方实时交易日历。
 
