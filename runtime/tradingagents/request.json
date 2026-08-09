@@ -1,12 +1,12 @@
 {
-  "request_id": "mu-smoke-2026-08-09-08",
+  "request_id": "mu-smoke-2026-08-09-09",
   "ticker": "MU",
   "analysis_date": "2026-08-07",
   "backend": "ollama",
-  "deep_model": "qwen3:4b-instruct",
-  "quick_model": "qwen3:4b-instruct",
+  "deep_model": "qwen3:0.6b",
+  "quick_model": "qwen3:0.6b",
   "selected_analysts": ["market"],
-  "max_debate_rounds": 1,
-  "max_risk_rounds": 1,
+  "max_debate_rounds": 0,
+  "max_risk_rounds": 0,
   "output_language": "Chinese"
 }
