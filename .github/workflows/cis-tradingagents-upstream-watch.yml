@@ -1,0 +1,79 @@
+name: CIS TradingAgents Upstream Watch
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout CIS repository
+        uses: actions/checkout@v6
+
+      - name: Check TradingAgents upstream main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          STATUS_FILE="runtime/tradingagents/upstream-status.json"
+          mkdir -p "$(dirname "$STATUS_FILE")"
+          CURRENT_SHA=$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/TauricResearch/TradingAgents/commits/main \
+            | python -c 'import json,sys; print(json.load(sys.stdin)["sha"])')
+
+          if [ -f "$STATUS_FILE" ]; then
+            OBSERVED_SHA=$(python -c 'import json; print(json.load(open("runtime/tradingagents/upstream-status.json")).get("observed_sha", ""))')
+            REVIEWED_SHA=$(python -c 'import json; print(json.load(open("runtime/tradingagents/upstream-status.json")).get("reviewed_sha", ""))')
+          else
+            OBSERVED_SHA=""
+            REVIEWED_SHA=""
+          fi
+
+          if [ "$CURRENT_SHA" = "$OBSERVED_SHA" ]; then
+            echo "No upstream SHA change: $CURRENT_SHA"
+            exit 0
+          fi
+
+          python - "$CURRENT_SHA" "$REVIEWED_SHA" <<'PY'
+          import json, sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          current_sha, reviewed_sha = sys.argv[1], sys.argv[2]
+          payload = {
+              "upstream": "TauricResearch/TradingAgents",
+              "branch": "main",
+              "observed_sha": current_sha,
+              "reviewed_sha": reviewed_sha,
+              "review_status": "review_required",
+              "detected_at": datetime.now(timezone.utc).isoformat(),
+              "policy": "detect_only_do_not_auto_apply_methodology_changes"
+          }
+          Path("runtime/tradingagents/upstream-status.json").write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Commit changed upstream status
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add runtime/tradingagents/upstream-status.json
+          if git diff --cached --quiet; then
+            echo "No status change to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: flag TradingAgents upstream change for review"
+          git pull --rebase origin main
+          git push origin HEAD:main
