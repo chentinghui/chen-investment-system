@@ -13,6 +13,8 @@ from typing import Any
 
 def parse_float(value: Any) -> float | None:
     try:
+        if value is None or isinstance(value, bool):
+            return None
         text = str(value).strip()
         number = float(text) if text else None
         if number is None or not math.isfinite(number):
@@ -69,6 +71,8 @@ def annualized_metrics(returns: list[float], periods_per_year: int) -> dict[str,
 def equal_weights(tickers: list[str]) -> dict[str, float]:
     if not tickers:
         return {}
+    if len(set(tickers)) != len(tickers):
+        raise ValueError("tickers must be unique when constructing portfolio weights")
     w = 1.0 / len(tickers)
     return {ticker: w for ticker in tickers}
 
@@ -117,25 +121,37 @@ def run_backtest(
         raise ValueError("top_n must be positive")
     if not 0 < top_fraction <= 1:
         raise ValueError("top_fraction must be in (0, 1]")
-    if cost_bps < 0:
-        raise ValueError("cost_bps must be non-negative")
+    if not math.isfinite(cost_bps) or cost_bps < 0:
+        raise ValueError("cost_bps must be a finite non-negative number")
     if periods_per_year <= 0:
         raise ValueError("periods_per_year must be positive")
     if train_end and validation_end and parse_period(validation_end) <= parse_period(train_end):
         raise ValueError("validation_end must be after train_end")
 
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in rows:
+    seen_period_tickers: set[tuple[str, str]] = set()
+    for index, row in enumerate(rows):
         score = parse_float(row.get("score"))
         forward_return = parse_float(row.get("forward_return"))
-        if not row.get("date") or not row.get("ticker") or score is None or forward_return is None:
+        raw_date = str(row.get("date") or "").strip()
+        ticker = str(row.get("ticker") or "").strip().upper()
+        if not raw_date or not ticker or score is None or forward_return is None:
             continue
-        parse_period(row["date"])
-        grouped[row["date"]].append({
-            "ticker": row["ticker"].strip().upper(),
+        parse_period(raw_date)
+        if forward_return < -1.0:
+            raise ValueError(f"forward_return cannot be below -100% at row {index}")
+        key = (raw_date, ticker)
+        if key in seen_period_tickers:
+            raise ValueError(f"duplicate ticker within period: {raw_date}/{ticker}")
+        seen_period_tickers.add(key)
+        benchmark_return = parse_float(row.get("benchmark_return"))
+        if benchmark_return is not None and benchmark_return < -1.0:
+            raise ValueError(f"benchmark_return cannot be below -100% at row {index}")
+        grouped[raw_date].append({
+            "ticker": ticker,
             "score": score,
             "forward_return": forward_return,
-            "benchmark_return": parse_float(row.get("benchmark_return")),
+            "benchmark_return": benchmark_return,
         })
 
     portfolio_returns: list[float] = []
@@ -144,8 +160,8 @@ def run_backtest(
     previous_weights: dict[str, float] = {}
     cost_rate = cost_bps / 10000.0
 
-    for date in sorted(grouped, key=parse_period):
-        candidates = sorted(grouped[date], key=lambda item: item["score"], reverse=True)
+    for period in sorted(grouped, key=parse_period):
+        candidates = sorted(grouped[period], key=lambda item: item["score"], reverse=True)
         count = top_n if top_n is not None else max(1, math.ceil(len(candidates) * top_fraction))
         selected = candidates[: min(count, len(candidates))]
         tickers = [item["ticker"] for item in selected]
@@ -160,14 +176,14 @@ def run_backtest(
         if available_benchmarks:
             first = available_benchmarks[0]
             if any(abs(float(x) - float(first)) > 1e-12 for x in available_benchmarks[1:]):
-                raise ValueError(f"benchmark_return must be identical within period {date}")
+                raise ValueError(f"benchmark_return must be identical within period {period}")
             benchmark_return = float(first)
 
-        segment = segment_name(date, train_end, validation_end)
+        segment = segment_name(period, train_end, validation_end)
         portfolio_returns.append(net_return)
         benchmark_returns.append(benchmark_return)
         period_details.append({
-            "date": date,
+            "date": period,
             "segment": segment,
             "selected_count": len(selected),
             "selected_tickers": tickers,
@@ -203,7 +219,7 @@ def run_backtest(
         "metrics": metrics,
         "metrics_by_segment": metrics_by_segment,
         "period_details": period_details,
-        "warning": "Input must be point-in-time and survivorship-bias-aware. This optional extension never changes CIS production rules automatically.",
+        "warning": "Input must be point-in-time, unique by (date,ticker), and survivorship-bias-aware. This optional extension never changes CIS production rules automatically.",
     }
 
 
