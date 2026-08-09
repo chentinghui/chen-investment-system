@@ -86,6 +86,21 @@ class BacktestTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "below -100%"):
             run_backtest(rows, top_fraction=1.0, top_n=None, cost_bps=10, periods_per_year=12)
 
+    def test_missing_forward_return_is_rejected_not_silently_dropped(self) -> None:
+        rows = [
+            {"date": "2026-01", "ticker": "A", "score": "90", "forward_return": "0.01"},
+            {"date": "2026-01", "ticker": "B", "score": "80", "forward_return": ""},
+        ]
+        with self.assertRaisesRegex(ValueError, "forward_return must be a finite number"):
+            run_backtest(rows, top_fraction=1.0, top_n=None, cost_bps=10, periods_per_year=12)
+
+    def test_invalid_benchmark_return_is_rejected_not_treated_as_missing(self) -> None:
+        rows = [
+            {"date": "2026-01", "ticker": "A", "score": "90", "forward_return": "0.01", "benchmark_return": "bad"},
+        ]
+        with self.assertRaisesRegex(ValueError, "benchmark_return must be a finite number"):
+            run_backtest(rows, top_fraction=1.0, top_n=None, cost_bps=10, periods_per_year=12)
+
 
 class PredictionLedgerTests(unittest.TestCase):
     def test_default_horizons_are_tactical(self) -> None:
