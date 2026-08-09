@@ -1,58 +1,171 @@
-# CIS 外部模块适配与降级（0.4.5）
+# CIS 外部模块适配与降级（0.4.5，Control Plane v2）
 
-外部模块的“存在/可访问”“程序执行成功”“研究质量通过”必须分开判断。README、历史运行记录、聊天记忆或模块名称都不能证明本次已运行，更不能证明结果可靠。
-
-## TradingAgents 上游
-
-- 上游：`TauricResearch/TradingAgents`。
-- CIS 日常股票研究默认**不运行其 Python 程序**，而是使用 `tradingagents-methodology.md` 的 ChatGPT-native 稳定方法论。
-- 原版 Python 只用于用户明确要求的运行/测试、A/B 验证或上游功能审查。
-- 日常上游检查使用 `runtime/tradingagents/upstream-status.json` 的 **7 天 TTL**。
-- TTL 的确定性执行器是 `scripts/check_tradingagents_upstream.py`：距离 `last_checked_at` 不足 7 天时不访问上游；达到或超过 7 天后才检查当前 `main` SHA，并可刷新状态文件。
-- SHA 变化时标记 `review_required`，当次仍使用 CIS 已验证稳定基线。
-- 上游暂时不可访问不阻塞正常研究；披露 `upstream_check=unavailable`。
-- 用户明确要求“检查 TradingAgents 更新”时可忽略 TTL 立即检查。
-- **不使用定时 GitHub Actions 监控 TradingAgents 上游。**
-- 上游变化不得自动覆盖 CIS 方法论。
-
-### 原版远程运行安全边界
-
-原版远程执行仍以 upstream 当前 `main` 为目标，但 0.4.5 增加两层安全门：
-
-1. 第三方 TradingAgents 代码只在 `contents: read` Job 中执行；仓库写回由独立 trusted publisher 完成，publisher 不持有 LLM Secret，也不执行第三方代码。
-2. Cloud/secret-backed 运行只有在当前 upstream SHA 与 `reviewed_sha` 一致时才允许；未审查新 SHA 只能使用零密钥 Ollama smoke test。
-
-OpenAI-compatible provider 也使用固定凭据路由：NVIDIA endpoint 只使用 `NVIDIA_API_KEY`；自定义 HTTPS endpoint 只使用 `OPENAI_COMPATIBLE_API_KEY`，不跨 provider fallback。
-
-### 原版运行状态分层
+外部模块必须拆开判断：
 
 ```text
-execution_status = success | error | invalid_input | unavailable
-runtime_readiness = installed_ready | installed_limited | remote_ready | remote_limited | upstream_only | blocked
-
-evidence_audit_status = not_run | pass | unresolved | fail
-research_quality = unreviewed | accepted | rejected
+存在/可访问
+≠ 程序执行成功
+≠ 研究质量通过
+≠ 可以发布 CIS 最终动作
 ```
 
-`remote_ready` / `installed_ready` 只表示程序运行完成，不表示事实正确、证据可靠或最终结论被 CIS 接受。原版 Portfolio Manager / BUY-SELL-HOLD 统一记为 `external_decision_candidate`，无最终动作权。
+README、历史运行记录、聊天记忆或模块名称都不能证明本次已运行。
 
-## Anthropic Financial Services
+## 1. 外部引擎总原则
 
-Anthropic `financial-services` 是 CIS 首选专业金融 Skill 上游，用于 DCF / Comps、三表、模型审计、Earnings、Competitive、Thesis、Catalyst 等专业子问题。
+CIS 正式接受以下专业外部能力：
 
-只有本次真实读取/执行对应 Skill 且关键输入完整时，才能标记为已使用。输出必须回灌 CIS Evidence Gate。
+```text
+OpenBB                  → 数据基础设施
+TradingAgents           → 通用多 Agent 股票研究
+FinRobot                → 确定性估值/财务建模
+Microsoft Qlib          → AI Quant / ML / 因子 / 组合研究
+Microsoft RD-Agent      → 自动量化 R&D
+QuantConnect LEAN       → 策略级事件驱动回测与执行验证
+Anthropic Financial Services → 专业方法增强 / second opinion
+```
 
-## QuantConnect LEAN
+统一边界：
 
-- 上游：`QuantConnect/Lean`，作为 CIS **外部量化验证/回测引擎**；
-- CIS 不 vendor、不复制 LEAN 源码，不使用 git submodule；
-- CIS 只维护 `integrations/lean/cis_lean_adapter.py` 和 `references/quantconnect-lean.md`；
-- 需要事件驱动策略、订单、费用、持仓路径、股票/ETF/期权等策略级回测时优先 LEAN；
-- `extensions/research_tooling/backtest_factor_strategy.py` 继续保留为轻量横截面 baseline evaluator；
-- 普通单股分析不自动运行 LEAN；
-- 当前集成只做本地 backtest 调用与结果 JSON 解析，不启用 live trading / Broker 自动执行。
+```text
+decision_authority = none
+final_decision_authority = CIS Control Layer
+```
 
-### LEAN 运行状态分层
+外部项目不 vendor 到 CIS，不因上游更新自动修改生产规则。
+
+## 2. OpenBB
+
+- 上游：`OpenBB-finance/OpenBB`；
+- CIS 定位：**data_fabric**，不是投资决策引擎；
+- 用于统一接入行情、基本面、宏观及多 provider 数据；
+- 可以向 TradingAgents、FinRobot、Qlib 或 CIS Evidence Layer 提供标准化数据输入。
+
+### 数据纪律
+
+- OpenBB provider 数据不天然高于 primary source；
+- 财报重大数字冲突时优先 SEC/issuer filing/regulator source；
+- 行情关键冲突时优先交易所或更直接的 market-data source；
+- 必须保存 provider、`as_of`/timestamp、currency、unit；
+- provider failover 后必须披露口径差异风险。
+
+降级：OpenBB 不可用 → primary source / direct provider / public web。不得声称“OpenBB 已运行”。
+
+## 3. TradingAgents
+
+- 上游：`TauricResearch/TradingAgents`；
+- CIS 定位：**general_multi_agent_research**；
+- 日常股票研究可使用已审查的 ChatGPT-native TradingAgents Methodology；
+- 原版 Python runtime 仅在用户明确运行/测试、A/B 或上游审查时执行；
+- 原版 Portfolio Manager 的 BUY/SELL/HOLD 统一记为 `external_decision_candidate`。
+
+### 上游安全
+
+保留 7 天 TTL、`reviewed_sha`、secret-backed 只运行已审查 SHA、第三方执行 Job 无写权限等现有安全边界。
+
+原版 runtime 成功只表示程序完成；最终仍需要 CIS Evidence/Risk/Score。
+
+## 4. FinRobot
+
+- 上游：`AI4Finance-Foundation/FinRobot`；
+- CIS 定位：**deterministic_financial_modeling**；
+- 正式接受为专业估值/模型引擎。
+
+优先任务：
+
+```text
+DCF
+Comps
+DDM
+LBO
+WACC
+Monte Carlo valuation
+Earnings modeling
+IC-style equity research output
+```
+
+### 规则
+
+- 优先使用经过 CIS Evidence Layer 核验的数据输入；
+- 保留模型假设、数值来源和计算 provenance；
+- 与其他模型冲突时逐项核对 WACC、增长率、终值、margin、capex、peer set 等；
+- 不简单平均目标价；
+- FinRobot 的 Judge/Agent 结论仍没有最终 CIS 动作权。
+
+降级：FinRobot 不可用 → Anthropic Financial Services 或透明 CIS 计算。fallback 必须显式标记。
+
+## 5. Microsoft Qlib
+
+- 上游：`microsoft/qlib`；
+- CIS 定位：**quant_ml_research**；
+- 正式接受为专业 Quant/ML/因子研究层。
+
+适用：
+
+```text
+factor research
+ML signal/model research
+quant screening
+portfolio optimization
+model/research backtest
+```
+
+Qlib 与本地 `extensions/research_tooling/quant_factor_engine.py` 不同：后者只是轻量 fallback/sanity check，不能冒充完整 Qlib。
+
+### 研究纪律
+
+- 数据必须 point-in-time；
+- 避免 survivorship、restatement leakage、universe drift；
+- 训练/验证/OOS 分离；
+- 因子/模型结果只作为 quantitative evidence；
+- Qlib 结果不直接修改 CIS Score 权重。
+
+## 6. Microsoft RD-Agent
+
+- 上游：`microsoft/RD-Agent`；
+- CIS 定位：**autonomous_quant_rnd**；
+- 正式接受，但只在 R&D intent 下按需运行。
+
+适用：
+
+```text
+factor discovery
+factor-model co-optimization
+quant experiment generation
+automated R&D loop
+```
+
+不适用：一般单股研究、普通买卖判断、简单估值。
+
+### 生产升级链
+
+```text
+RD-Agent candidate
+→ Qlib independent evaluation
+→ LEAN strategy/execution validation
+→ CIS Backtest Validation
+→ policy review
+→ production
+```
+
+RD-Agent 的新候选默认：
+
+```text
+research_quality = experimental
+production_authority = none
+```
+
+RD-Agent 不可用时无静默等价替代。
+
+## 7. QuantConnect LEAN
+
+- 上游：`QuantConnect/Lean`；
+- CIS 定位：**external_quant_validation**；
+- 适配层：`integrations/lean/cis_lean_adapter.py`；
+- 用于事件驱动策略、订单、费用、滑点、持仓路径、期权/ETF/股票策略级验证；
+- 不负责基本面、新闻、估值或最终动作。
+
+状态：
 
 ```text
 execution_status = success | error | invalid_input | unavailable
@@ -62,33 +175,70 @@ engine_role = external_quant_validation
 decision_authority = none
 ```
 
-只有本次真实调用适配器并且 `execution_status=success`、找到可识别的 statistics JSON，才能说“LEAN 回测已运行”。`runtime_readiness=ready` 只说明基础环境存在，不证明 QuantConnect 账户、数据、项目或策略已经可执行。
+显式 LEAN 请求不可用时必须报告 unavailable/error，禁止拿 baseline evaluator 冒充。
 
-LEAN 的 CAGR、Drawdown、Sharpe、Win Rate 等结果只是历史策略证据。它不自动消除 look-ahead bias、survivorship bias、universe drift、restatement leakage、过拟合或不现实的成交/费用假设。所有成功结果仍必须经过 `backtest-validation.md`，未经审查保持 `research_quality=unreviewed`。
+LEAN 结果仍需 `backtest-validation.md` 检查 look-ahead、survivorship、费用/滑点、OOS、参数稳健性与执行真实性。
 
-Lean CLI、Docker、账户、数据或项目不可用时，普通 CIS Core 必须继续运行；如果用户明确要求“用 LEAN 回测”，则必须明确报告 unavailable/error，不能用 baseline evaluator 冒充 LEAN。
+当前 CIS 不启用 LEAN live trading / Broker 自动执行。
 
-截至 2026-08-09，官方 Lean CLI 本地运行路径使用 Docker，官方文档当前要求付费组织层级。CIS 不保存 QuantConnect/Broker Secret，也不负责登录、组织 workspace 或数据授权。
+## 8. Anthropic Financial Services
 
-## Buffett / 其他可选方法
+Anthropic Financial Services 继续保留为**专业方法上游 / second opinion**，用于模型审计、Earnings、Competitive、Thesis、Catalyst 等。
 
-任何外部投资方法都只能作为可选视角或证据增强，不得覆盖 CIS 的 Evidence、Risk、Score、Critical Dimension / Context Checks、Regime、Tactical Price/RR Gate、四层交易、ETF/QDII 和组合门。
+在 FinRobot 已完成确定性模型后，不无理由再跑一套同质 DCF。deep 模式只有在能提供独立方法或审计价值时才增加 Anthropic。
 
-## 数据连接器
+只有本次真实可访问并读取/执行对应 Skill，才能标记为已使用。
 
-- 代码/Skill 可用不等于数据已授权或实时；
-- 行情、财报、新闻、宏观、机构持仓、资金流必须记录实际来源和 `as_of`；
-- 短线行情必须记录 exchange、quote timestamp，并由 CIS 验证 regular / premarket / afterhours / last_close 语义及 quote freshness；
-- active quote 的 `quote_timestamp` 本身必须属于所声明的 session，不能把盘前旧报价包装成 regular live；
-- 历史研究必须使用 point-in-time 数据，禁止 look-ahead leakage；
-- 数据不可用时可降级到公开资料/用户资料，但必须说明覆盖限制。
+## 9. 数据与模型冲突
 
-## Optional Research Tooling
-
-Quant、Baseline Backtest、Prediction Ledger 和 Performance/Evaluation 是 CIS 仓库中的**可选外围研发工具**，统一位于：
+### 数据冲突
 
 ```text
-extensions/research_tooling/
+primary source
+→ freshness
+→ provider coverage
+→ accounting/unit/currency consistency
 ```
 
-它们不依赖外部 LLM，但也不属于日常单股 Core。只有筛选、轻量横截面规则验证、记录/复盘/校准任务才调用；其故障不得阻塞 CIS Core。需要更完整的可执行策略回测时，优先走外部 QuantConnect LEAN。Market Regime 与 Tactical Price/RR Gate 仍属于 CIS Core 的按需分析层。
+### 估值冲突
+
+比较输入和假设，不平均 target。
+
+### Qlib vs LEAN
+
+- Qlib：研究、因子、ML、组合层；
+- LEAN：订单、费用、滑点、持仓路径、event-driven execution；
+- 执行真实性问题优先参考 LEAN；
+- 研究有效性问题优先审查 Qlib 实验设计；
+- 二者最终都回到 CIS Gate。
+
+## 10. Optional Local Research Tooling
+
+仓库本地外围工具继续保留，但角色改为：
+
+- Quant Factor Ranking → Qlib unavailable 时的轻量 fallback；
+- Baseline Backtest → 横截面 sanity check；
+- Prediction/Evaluation → 记录、复盘与校准诊断。
+
+它们不属于默认单股 Core，也不等价于 Qlib / LEAN。
+
+## 11. 外部模块更新策略
+
+CIS 不追求自动跟随所有 upstream main。对任何上游升级先检查：
+
+```text
+repo identity
+license
+API/CLI contract
+dependencies
+runtime requirements
+output schema
+security boundary
+representative tests
+```
+
+只有审查通过后才能改变稳定路由/适配器。
+
+## 12. 其他可选项目
+
+Vibe-Trading、NautilusTrader、Buffett skill 等可作为未来 optional adapter 或专项视角，但不替代已经正式分工的 OpenBB / TradingAgents / FinRobot / Qlib / RD-Agent / LEAN，也没有最终 CIS 动作权。
