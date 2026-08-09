@@ -1,7 +1,7 @@
 {
   "name": "chen-investment-system",
-  "version": "0.2.0",
-  "description": "陈氏投资系统：以 CIS 为唯一总控，结合 Anthropic Financial Services 专业 Skills，面向股票、ETF、投资组合、财报、估值、宏观和风险研究。",
+  "version": "0.3.0",
+  "description": "陈氏投资系统：CIS 控制层 + TradingAgents 默认研究核心 + Anthropic Financial Services 专业金融 Skills。",
   "author": {
     "name": "chentinghui",
     "url": "https://github.com/chentinghui"
@@ -12,25 +12,26 @@
   "keywords": [
     "investment-research",
     "public-equity",
+    "tradingagents",
+    "anthropic-financial-services",
     "valuation",
     "portfolio",
-    "anthropic-financial-services",
     "chinese"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "陈氏投资系统",
-    "shortDescription": "CIS 总控 + 专业金融 Skills + 统一评分与风险纪律",
-    "longDescription": "以 CIS 为唯一研究总控，标准化问题、证据、Agent 路由、置信度、风险门、八维评分、四层交易框架和复盘计划；专业财务、估值与权益研究方法优先适配 Anthropic Financial Services 上游。",
+    "shortDescription": "CIS 控制层 + TradingAgents + 专业金融 Skills",
+    "longDescription": "CIS 0.3 以 TradingAgents 作为默认通用股票研究与候选决策核心，以 Anthropic Financial Services 处理 DCF、Comps、财报和模型等专业子问题；CIS 保留证据门、八维评分、四层交易、ETF/QDII纪律、组合门和最终中文研究姿态。",
     "developerName": "chentinghui",
     "category": "Productivity",
     "capabilities": [
       "Interactive"
     ],
     "defaultPrompt": [
-      "用陈氏投资系统分析一只股票，先校验 CIS 当前版本和资料就绪度。",
-      "比较两只 ETF 的定位、费用、持仓与主要风险。",
-      "复盘这家公司最新财报是否改变了原投资论点。"
+      "用陈氏投资系统分析一只股票，先校验 CIS 当前版本并检查 TradingAgents 本次可用性。",
+      "用陈氏投资系统深度分析一家公司，需要时调用专业 DCF、Comps 和财报 Skills。",
+      "复盘我的持仓，先跑通用研究核心，再执行 CIS 四层交易框架和组合门。"
     ]
   }
 }
