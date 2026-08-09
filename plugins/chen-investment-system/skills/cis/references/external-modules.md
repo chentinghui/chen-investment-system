@@ -18,8 +18,6 @@
 
 ### 原版运行状态分层
 
-程序执行状态与研究质量分开：
-
 ```text
 execution_status = success | error | invalid_input | unavailable
 runtime_readiness = installed_ready | installed_limited | remote_ready | remote_limited | upstream_only | blocked
@@ -28,34 +26,31 @@ evidence_audit_status = not_run | pass | unresolved | fail
 research_quality = unreviewed | accepted | rejected
 ```
 
-`remote_ready` / `installed_ready` **只表示程序运行完成**，不表示事实正确、证据可靠或最终结论被 CIS 接受。
-
-原版 Portfolio Manager / BUY-SELL-HOLD 统一记为 `external_decision_candidate`，无最终动作权。
+`remote_ready` / `installed_ready` 只表示程序运行完成，不表示事实正确、证据可靠或最终结论被 CIS 接受。原版 Portfolio Manager / BUY-SELL-HOLD 统一记为 `external_decision_candidate`，无最终动作权。
 
 ## Anthropic Financial Services
 
-Anthropic `financial-services` 是 CIS 首选专业金融 Skill 上游，用于：
-
-- DCF / Comps；
-- 三表、数据清洗、模型审计；
-- Earnings Preview / Analysis；
-- Initiating Coverage / Model Update；
-- Competitive Analysis / Sector Overview；
-- Thesis Tracker / Catalyst Calendar / Idea Generation。
+Anthropic `financial-services` 是 CIS 首选专业金融 Skill 上游，用于 DCF / Comps、三表、模型审计、Earnings、Competitive、Thesis、Catalyst 等专业子问题。
 
 只有本次真实读取/执行对应 Skill 且关键输入完整时，才能标记为已使用。输出必须回灌 CIS Evidence Gate。
 
 ## Buffett / 其他可选方法
 
-任何外部投资方法都只能作为可选视角或证据增强，不得覆盖 CIS 的 Evidence、Risk、Score、Critical Dimension、Regime、四层交易、ETF/QDII和组合门。
+任何外部投资方法都只能作为可选视角或证据增强，不得覆盖 CIS 的 Evidence、Risk、Score、Critical Dimension、Regime、四层交易、ETF/QDII 和组合门。
 
 ## 数据连接器
 
-- 代码/Skill 可用不等于数据已授权或实时。
-- 行情、财报、新闻、宏观、机构持仓、资金流必须记录实际来源和 `as_of`。
-- 历史研究必须使用 point-in-time 数据，禁止 look-ahead leakage。
+- 代码/Skill 可用不等于数据已授权或实时；
+- 行情、财报、新闻、宏观、机构持仓、资金流必须记录实际来源和 `as_of`；
+- 历史研究必须使用 point-in-time 数据，禁止 look-ahead leakage；
 - 数据不可用时可降级到公开资料/用户资料，但必须说明覆盖限制。
 
-## Quant / Backtest 注意
+## Optional Research Tooling
 
-Quant、Backtest、Regime、Prediction Ledger 和 Performance Loop 是 CIS 自有确定性/规则模块，不依赖外部 LLM，但输入数据仍必须满足 point-in-time、股票池和偏差纪律。
+Quant、Backtest、Prediction Ledger 和 Performance/Evaluation 是 CIS 仓库中的**可选外围研发工具**，统一位于：
+
+```text
+extensions/research_tooling/
+```
+
+它们不依赖外部 LLM，但也不属于日常单股 Core。只有筛选、规则验证、记录/复盘/校准任务才调用；其故障不得阻塞 CIS Core。Market Regime 仍属于 CIS Core 的按需分析层。
