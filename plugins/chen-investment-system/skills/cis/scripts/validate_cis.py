@@ -53,6 +53,10 @@ def main() -> int:
             "TradingAgents",
             "Anthropic Financial Services",
             "唯一用户入口",
+            "自动触发规则",
+            "分析 MU",
+            "纯事实型问题",
+            "只要答案会影响投资研究或交易决策，默认进入 CIS",
             "Runtime Guard",
             "external_decision_candidate",
             "scoring-engine.md",
@@ -160,6 +164,9 @@ def main() -> int:
     require(
         evaluations,
         [
+            "分析 MU",
+            "MU现在能买吗",
+            "MU全称是什么",
             "TradingAgents 包未安装",
             "external_decision_candidate",
             "look-ahead leakage",
@@ -196,7 +203,7 @@ def main() -> int:
         "legacy stock assistant",
     )
 
-    for relative in re.findall(r"`(references/[^`]+\.md)`", skill):
+    for relative in re.findall(r"`(references/[^`]+\\.md)`", skill):
         if not (ROOT / relative).is_file():
             raise AssertionError(f"broken SKILL.md reference: {relative}")
 
