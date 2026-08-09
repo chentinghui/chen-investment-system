@@ -3,7 +3,7 @@ name: cis
 description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一用户入口。股票/上市公司/ETF分析、估值、买卖、持仓、财报、风险、目标价、买入价、卖出价和跨标的比较默认进入 CIS。日常单股研究由 CIS Core 完成；Quant、Backtest、Prediction/Evaluation 仅作为按需外围工具，不属于默认分析链。
 ---
 
-# 陈氏投资系统（CIS）0.4.3
+# 陈氏投资系统（CIS）0.4.4
 
 CIS 是唯一用户入口和最终质量控制层。**CIS Core 的职责是分析，不负责默认记录、自动结算或绩效数据库。** CIS 不自动下单。
 
