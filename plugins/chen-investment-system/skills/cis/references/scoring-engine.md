@@ -1,15 +1,15 @@
-# CIS 统一评分引擎（0–100）
+# CIS 统一评分引擎（0–100，0.4.2）
 
-评分是研究综合工具，不是自动交易器。任何分数都必须服从 Evidence Gate、Risk Gate、Market Regime（按需）、四层交易框架和组合数据门。
+评分是研究综合工具，不是自动交易器。任何分数都必须服从 Evidence Gate、Risk Gate、Critical Dimension Gate、Market Regime（按需）、四层交易框架和组合数据门。
 
 ## 当前校准状态
 
-当前八维权重是 **CIS 生产规则，但尚未完成充分历史/样本外校准**。
+当前八维权重是 **CIS 生产启发式规则，但尚未完成充分历史/样本外校准**。
 
 - 状态：`production_heuristic_pending_calibration`
 - 不允许因为一次或少量回测结果自动调整权重。
-- `performance-loop.md` 负责评估高分是否真的对应更高未来收益/超额收益。
-- 权重变化必须有足够样本、样本外结果、不同 Regime 稳定性和明确变更理由，并通过人工/ChatGPT 审查后版本化修改。
+- `performance-loop.md` 负责检验总分、各维度与未来收益/超额收益的关系。
+- 权重变化必须有足够样本、样本外结果、不同 Regime 稳定性和明确变更理由，并版本化修改。
 
 ## 维度与权重
 
@@ -34,19 +34,45 @@ coverage = 已有维度权重之和 / 100
 weighted_score = Σ(score_i × weight_i) / Σ(available_weight_i)
 ```
 
-- `coverage >= 85%`：`decision_grade`，质量门通过后可报告正式 CIS 分数。
-- `70% <= coverage < 85%`：`provisional`，只报告暂定分数和缺失维度。
-- `coverage < 70%`：`insufficient`，不输出单一总分，只列已有维度。
+- `coverage >= 85%`：只有全部质量门明确通过后才可 `decision_grade`。
+- `70% <= coverage < 85%`：`provisional`。
+- `coverage < 70%`：`insufficient`，不输出单一总分。
 
-## 质量门
+## Fail-Closed 质量门
+
+`scripts/score_cis.py` 默认：
+
+```text
+audit_status = unverified
+risk_status  = unverified
+```
+
+调用者没有明确提供 `pass` 时，**禁止**进入 `decision_grade`。不得把“没有发现错误”当成“已经审计通过”。
 
 以下任一成立时，即使 coverage 足够，也不得升级为决策级：
 
-- Evidence Audit `audit_status=unresolved`；
-- Risk Gate `risk_override=block`；
+- Evidence Audit 未明确 `pass`；
+- Risk Review 未明确 `pass`；
+- `risk_override=block`；
 - 与结论直接相关的关键维度 `runtime_readiness=blocked`；
+- Critical Dimension 缺失；
 - 关键市场/财务数据截止时间不明；
 - 涉及仓位但组合数据门不满足。
+
+## Critical Dimension Gate
+
+Coverage 不能替代关键维度。当前确定性基线：
+
+```text
+generic   → fundamentals + valuation + risk_resilience
+long_term → fundamentals + growth + valuation + risk_resilience
+tactical  → technical + risk_resilience
+earnings  → fundamentals + catalyst_macro + risk_resilience
+```
+
+例如 valuation 完全缺失时，即使其余维度刚好形成 85% coverage，也只能是 `provisional`，不能 `decision_grade`。
+
+ETF/QDII 不使用上述股票 Critical Dimension 组合替代产品门；ETF 仍必须通过产品身份、溢价、流动性、时差/申赎等专属 Gate。
 
 ## Quant 与 CIS Score 的边界
 
