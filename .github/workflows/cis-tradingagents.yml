@@ -5,12 +5,66 @@ on:
     paths:
       - "runtime/tradingagents/request.json"
   workflow_dispatch:
+    inputs:
+      request_id:
+        description: "Unique request id"
+        required: true
+        type: string
+      ticker:
+        description: "Ticker, e.g. MU or NVDA"
+        required: true
+        type: string
+      analysis_date:
+        description: "YYYY-MM-DD"
+        required: true
+        type: string
+      backend:
+        description: "LLM backend"
+        required: true
+        default: "ollama"
+        type: choice
+        options:
+          - ollama
+          - openai_compatible
+      backend_url:
+        description: "Required for openai_compatible; blank for Ollama"
+        required: false
+        type: string
+      deep_model:
+        description: "Model id"
+        required: true
+        default: "qwen3:4b-instruct"
+        type: string
+      quick_model:
+        description: "Optional quick model; blank uses deep model"
+        required: false
+        type: string
+      selected_analysts:
+        description: "Comma-separated: market,social,news,fundamentals"
+        required: true
+        default: "market,fundamentals,news"
+        type: string
+      max_debate_rounds:
+        description: "Debate rounds"
+        required: true
+        default: "1"
+        type: string
+      max_risk_rounds:
+        description: "Risk rounds"
+        required: true
+        default: "1"
+        type: string
+      output_language:
+        description: "Output language"
+        required: true
+        default: "Chinese"
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: cis-tradingagents-remote-v2
+  group: cis-tradingagents-remote-v3
   cancel-in-progress: true
 
 jobs:
@@ -26,6 +80,44 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - name: Build explicit manual request
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          INPUT_REQUEST_ID: ${{ inputs.request_id }}
+          INPUT_TICKER: ${{ inputs.ticker }}
+          INPUT_ANALYSIS_DATE: ${{ inputs.analysis_date }}
+          INPUT_BACKEND: ${{ inputs.backend }}
+          INPUT_BACKEND_URL: ${{ inputs.backend_url }}
+          INPUT_DEEP_MODEL: ${{ inputs.deep_model }}
+          INPUT_QUICK_MODEL: ${{ inputs.quick_model }}
+          INPUT_SELECTED_ANALYSTS: ${{ inputs.selected_analysts }}
+          INPUT_DEBATE: ${{ inputs.max_debate_rounds }}
+          INPUT_RISK: ${{ inputs.max_risk_rounds }}
+          INPUT_LANGUAGE: ${{ inputs.output_language }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          analysts = [x.strip().lower() for x in os.environ["INPUT_SELECTED_ANALYSTS"].split(",") if x.strip()]
+          payload = {
+              "request_id": os.environ["INPUT_REQUEST_ID"].strip(),
+              "ticker": os.environ["INPUT_TICKER"].strip().upper(),
+              "analysis_date": os.environ["INPUT_ANALYSIS_DATE"].strip(),
+              "backend": os.environ["INPUT_BACKEND"].strip(),
+              "backend_url": os.environ.get("INPUT_BACKEND_URL", "").strip(),
+              "deep_model": os.environ["INPUT_DEEP_MODEL"].strip(),
+              "quick_model": os.environ.get("INPUT_QUICK_MODEL", "").strip(),
+              "selected_analysts": analysts,
+              "max_debate_rounds": int(os.environ["INPUT_DEBATE"]),
+              "max_risk_rounds": int(os.environ["INPUT_RISK"]),
+              "output_language": os.environ["INPUT_LANGUAGE"].strip(),
+          }
+          Path("runtime/tradingagents/request.json").write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
 
       - name: Install current TradingAgents upstream
         shell: bash
@@ -66,6 +158,8 @@ jobs:
         continue-on-error: true
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          TRADINGAGENTS_API_KEY: ${{ secrets.TRADINGAGENTS_API_KEY }}
+          OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENAI_COMPATIBLE_API_KEY }}
           PYTHONUNBUFFERED: "1"
         run: |
           python plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py runtime/tradingagents/request.json runtime/tradingagents/result.json runtime/tradingagents/result.md
@@ -79,7 +173,7 @@ jobs:
           REQUEST_ID=$(python -c 'import json; print(json.load(open("runtime/tradingagents/request.json")).get("request_id", "unknown"))')
           SAFE_ID=$(printf '%s' "$REQUEST_ID" | tr -cd 'A-Za-z0-9._-')
           if [ -z "$SAFE_ID" ]; then SAFE_ID=unknown; fi
-          if [ ! -f runtime/tradingagents/result.json ]; then printf '%s\n' '{"status":"error","runtime_readiness":"remote_limited","error":"runner produced no result file"}' > runtime/tradingagents/result.json; fi
+          if [ ! -f runtime/tradingagents/result.json ]; then printf '%s\n' '{"status":"error","execution_status":"error","runtime_readiness":"remote_limited","evidence_audit_status":"not_run","research_quality":"rejected","error":"runner produced no result file"}' > runtime/tradingagents/result.json; fi
           if [ ! -f runtime/tradingagents/result.md ]; then printf '%s\n' '# TradingAgents Remote Result' '' 'Runner produced no Markdown report. See result.json.' > runtime/tradingagents/result.md; fi
           cp runtime/tradingagents/result.json "runtime/tradingagents/results/${SAFE_ID}.json"
           cp runtime/tradingagents/result.md "runtime/tradingagents/results/${SAFE_ID}.md"
