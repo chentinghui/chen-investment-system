@@ -72,17 +72,6 @@ Buffett 是专业定性分析模块/外部依赖，用于商业模式、商业�
 - 用户的问题必须依赖完整 Buffett 框架、且没有可替代资料：`runtime_readiness: blocked`；只列出最小补充要求。
 - Buffett 不可用不得阻止 CIS 总控、证据登记、风险门和其他可用模块运行。
 
-## Legacy Public Equity Investing（兼容备用，不再是默认）
-
-`Public Equity Investing` 从 CIS 0.2.0 起不再作为专业研究的首选上游，也不得因为当前运行环境恰好安装了它就自动绕过 Anthropic 路由。
-
-只允许在以下情况使用：
-
-- 用户明确要求单独使用 Public Equity Investing；或
-- Anthropic 对应能力本次不可读取/不可适配，而 Public Equity Investing 在当前环境真实可调用，且使用它能显著减少猜测；此时必须标记 `legacy_fallback`。
-
-即使作为备用，它也只能返回子模块结果，最终 CIS 姿态仍归总控。不得把其旧评分、旧权重或旧输出格式覆盖 `scoring-engine.md`、证据门、风险门或四层交易框架。
-
 ## 数据连接器
 
 - 插件安装不等于连接器已授权。
