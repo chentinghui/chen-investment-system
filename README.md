@@ -1,6 +1,6 @@
 # 陈氏投资系统（Chen Investment System，CIS）
 
-当前版本：**0.4.4**
+当前版本：**0.4.5**
 
 CIS 是一个中文系统化股票研究控制层。它的核心职责是**分析**：组织证据、多角色研究、风险审查、评分、市场环境和交易计划。CIS 不自动下单，也不要求每次研究都运行量化、回测或历史绩效模块。
 
@@ -23,27 +23,30 @@ CIS 八维 Quality Score / Research Grade
   ↓
 Market Regime（按交易问题需要）
   ↓
-Exchange-aware Price/Session + Quote Freshness + Tactical R/R Gate（短线按需）
+US-equity Price/Session Baseline + Quote Freshness + Tactical R/R Gate（短线按需）
   ↓
 四层交易 / ETF-QDII / Portfolio Gate
   ↓
 最终中文分析结论
 ```
 
-日常单股分析只运行与当前问题相关的 Core 能力。CIS Core 的失败条件不会因为外围研发工具不可用而扩大。
+日常单股分析只运行与当前问题相关的 Core 能力。外围研发工具不可用时，不阻塞 CIS Core。
 
-## 0.4.4 Tactical Edge-Case Hardening
+## 0.4.5 Contract & Security Hardening
 
-本版不增加新的 Agent、数据库或日常分析负担，只修复短线边界条件：
+本版不新增 Agent，也不扩大日常分析链，重点修复接口、边界条件和供应链安全：
 
-- **Exchange-aware Session Guard**：XNAS/XNYS 的 `market_session` 根据带时区时间戳推导并与输入交叉校验，周末/主要休市日不能再伪装成 `regular`；特殊临时休市仍由 Evidence Layer 额外核验。
-- **Quote Freshness 真正 fail-closed**：活跃交易时段必须提供 `quote_max_age_seconds`，陈旧报价不能通过 Price Context；`last_close` 必须对应最近一个已完成交易日。
-- **Setup Lifecycle**：价格已经越过 Stop 时不再错误返回 `wait_for_entry`；Hard Stop/已确认失效输出 `invalidated_reprice_required`，Target 1 已达到或越过输出 `setup_expired_reprice_required`。
-- **Stop Trigger Semantics**：支持 `hard_price | close_confirmation | technical_invalidation`；非 hard stop 必须明确 `stop_confirmation_met`，代码不替研究层猜测确认是否成立。
-- **Chase Limit 几何约束**：Long 必须 `entry_high <= chase_limit < target1`，Short 必须 `target1 < chase_limit <= entry_low`，避免追价上限已经超过目标价的无意义计划。
-- **Market Regime 类型与 freshness 修复**：数字字段拒绝 JSON boolean；stale/missing-dated 信号先排除，再根据剩余 fresh coverage 决定能否分类，而不是一条陈旧信号让整个 Regime 无条件失效。
-- **Regime 口径标准化**：新增 `us_broad_v1`（SPY + S&P500 breadth）和 `us_nasdaq_v1`（QQQ + Nasdaq-100 breadth），并固定 SMA50 slope 与 20D realized volatility 定义。
-- **Research Grade 与 Tactical Setup Readiness 分离**：高 CIS 分数不等于现在可以买；好的 Tactical setup 也不能伪造缺失的研究 coverage。
+- **Agent ↔ Score 契约统一**：Evidence 使用 `audit_status=unverified|pass|unresolved|fail`；Risk 使用 `risk_status=unverified|pass|unresolved|fail`、`risk_override=none|block`。`conditional/caution` 不再作为机器枚举。
+- **Quote Observation Session**：active quote 的 `quote_timestamp` 本身必须属于与分析一致的 session，盘前旧报价不能包装成 regular `live`。
+- **Persistent Setup Invalidation**：确认型/技术型失效一旦确认，价格随后反弹也不能让旧 setup 自动复活；必须重新定 Entry/Stop/Target。
+- **Stop Type fail-closed**：短线正式 setup 必须显式给 `hard_price | close_confirmation | technical_invalidation`，不再静默默认 hard stop。
+- **ETF 输入加固**：价格/IOPV 拒绝 JSON boolean；历史溢价 `ready` 至少要求 20 个唯一日期，重复同日数据不能膨胀样本。
+- **TradingAgents Remote 权限隔离**：第三方代码只在 `contents: read` Job 运行；写回由独立 trusted publisher 完成，publisher 不持有 LLM Secret，也不执行第三方代码。
+- **Secret / Endpoint 绑定**：NVIDIA profile 只允许固定 NVIDIA endpoint + `NVIDIA_API_KEY`；自定义 HTTPS compatible endpoint 只允许 `OPENAI_COMPATIBLE_API_KEY`，不跨 provider fallback。
+- **Reviewed SHA Gate**：Cloud/secret-backed 原版 TradingAgents 只有当前 upstream SHA 已被审查时才允许执行；未审查最新 main 只能做零密钥 Ollama smoke test。
+- **Evaluation 样本纪律**：5D/20D/60D 不再混成总体相关性；样本门槛优先按 unique `research_id`，避免把多个 horizon 当作独立实验。
+- **Public Ledger allowlist**：Prediction/Evaluation 公共记录只允许固定结构化字段，任意 notes/account/shares/cost_basis 等未批准字段直接拒绝。
+- **Quant / Backtest 数据质量**：Quant 拒绝重复 ticker 和单点伪横截面；Backtest 拒绝重复 `(date,ticker)` 与不可能的低于 -100% return。
 
 ## Optional Research Tooling
 
@@ -68,7 +71,19 @@ extensions/research_tooling/
 
 日常股票研究默认使用 CIS 已审查的稳定 TradingAgents 方法论。TradingAgents 上游采用 **7 天 TTL** 的使用时检查：TTL 未到不访问上游；到期后的下一次股票研究轻量检查当前 `main` SHA；发现变化只标记 `review_required`，未经审查不会覆盖稳定方法论。
 
-用户明确要求运行原版 TradingAgents 时，显式测试路径仍会重新 clone 上游当前 `main`。原版结果只能作为 `external_decision_candidate`，不能绕过 CIS 最终质量门。
+用户明确要求运行原版 TradingAgents 时，远程路径仍以当时 upstream `main` 为目标，但 0.4.5 增加安全门：
+
+```text
+Prepare / Analyze Job: contents: read
+固定 upstream SHA
+按 provider 只注入一项所需 Secret
+        ↓ Artifact
+Trusted Publisher: contents: write
+无 LLM Secret
+不执行第三方代码
+```
+
+Secret-backed run 要求当前 upstream SHA 等于 `reviewed_sha`；未审查最新 main 只允许零密钥 smoke test。原版结果仍只能作为 `external_decision_candidate`，不能绕过 CIS 最终质量门。
 
 ## Anthropic Financial Services
 
@@ -107,8 +122,9 @@ earnings  → fundamentals + catalyst_macro + risk_resilience
 对短线做差价、具体买点或“现在能不能追”的问题，CIS 额外执行：
 
 ```text
-exchange + analysis_timestamp / quote_timestamp
-session / price_type / quote freshness
+analysis_timestamp / quote_timestamp
+US-equity session baseline + quote observation session
+price_type / quote freshness
 Entry Zone
 Chase Limit
 Stop / Stop Type
