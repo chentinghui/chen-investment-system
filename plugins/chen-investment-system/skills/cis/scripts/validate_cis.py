@@ -12,6 +12,7 @@ REPO_ROOT = ROOT.parents[3]
 REFS = ROOT / "references"
 SCRIPTS = ROOT / "scripts"
 EXT = REPO_ROOT / "extensions" / "research_tooling"
+LEAN = REPO_ROOT / "integrations" / "lean"
 
 
 def read(path: Path) -> str:
@@ -55,6 +56,7 @@ def main() -> int:
         "four-layer": read(REFS / "four-layer-trading-framework.md"),
         "ETF premium": read(REFS / "cross-border-etf-premium.md"),
         "quant": read(REFS / "quant-engine.md"),
+        "QuantConnect LEAN": read(REFS / "quantconnect-lean.md"),
         "backtest": read(REFS / "backtest-validation.md"),
         "performance": read(REFS / "performance-loop.md"),
         "evaluation cases": read(REFS / "evaluation-cases.md"),
@@ -62,6 +64,7 @@ def main() -> int:
         "root architecture": read(REPO_ROOT / "AGENT_ARCHITECTURE.md"),
         "agents README": read(PLUGIN_ROOT / "agents" / "README.md"),
         "extension README": read(EXT / "README.md"),
+        "LEAN integration README": read(LEAN / "README.md"),
     }
     require_version(skill, "CIS skill")
     for label, text in docs.items():
@@ -73,8 +76,12 @@ def main() -> int:
 
     require(skill, (
         "CIS Core",
+        "External Quant Validation",
         "Optional Research Tooling",
         "extensions/research_tooling/",
+        "integrations/lean/cis_lean_adapter.py",
+        "references/quantconnect-lean.md",
+        "QuantConnect LEAN",
         "check_tradingagents_upstream.py",
         "audit_status = unverified | pass | fail | unresolved",
         "risk_status  = unverified | pass | fail | unresolved",
@@ -94,6 +101,9 @@ def main() -> int:
         "setup_expired_reprice_required",
         "unique `research_id`",
         "Trusted Publisher",
+        "QuantConnect LEAN",
+        "integrations/lean/cis_lean_adapter.py",
+        "research_quality=unreviewed",
     ), "module routing")
     require(docs["performance"], (
         "5 / 20 / 60 trading days",
@@ -102,6 +112,21 @@ def main() -> int:
         "allowlist",
         "next_session_close_to_close_adjusted_price_return",
     ), "performance loop")
+    require(docs["QuantConnect LEAN"], (
+        "external_quant_validation",
+        "decision_authority = none",
+        "execution_status = success | invalid_input | unavailable | error",
+        "research_quality = unreviewed",
+        "integrations/lean/cis_lean_adapter.py",
+        "不启用 LEAN live trading",
+    ), "QuantConnect LEAN reference")
+    require(docs["backtest"], (
+        "QuantConnect LEAN",
+        "external_quant_validation",
+        "research_quality = unreviewed",
+        "Execution realism",
+        "integrations/lean/cis_lean_adapter.py",
+    ), "backtest validation")
 
     evidence_agent = read(PLUGIN_ROOT / "agents" / "evidence-auditor.md")
     risk_agent = read(PLUGIN_ROOT / "agents" / "risk-manager.md")
@@ -145,6 +170,29 @@ def main() -> int:
         if (SCRIPTS / name).exists():
             raise AssertionError(f"optional research tool leaked into CIS Core: {name}")
         read(EXT / name)
+
+    lean_adapter = read(LEAN / "cis_lean_adapter.py")
+    lean_tests = read(LEAN / "test_cis_lean_adapter.py")
+    require(lean_adapter, (
+        'SCHEMA_VERSION = "cis.lean.backtest.v1"',
+        'ENGINE_NAME = "QuantConnect LEAN"',
+        'ENGINE_ROLE = "external_quant_validation"',
+        '"decision_authority": "none"',
+        '"research_quality": "unreviewed"',
+        '"runtime_readiness": "lean_cli_missing"',
+        '"runtime_readiness": "docker_missing"',
+        '"statistics_raw"',
+        '"backtest"',
+        '"--output"',
+    ), "LEAN adapter")
+    require(lean_tests, (
+        "test_parses_standard_statistics_into_cis_contract",
+        "test_parses_nested_portfolio_statistics",
+        "test_discovers_result_and_ignores_order_event_json",
+        "test_readiness_is_unavailable_when_cli_or_docker_missing",
+        "test_backtest_fails_closed_when_lean_cli_missing",
+        "test_backtest_fails_closed_when_docker_missing",
+    ), "LEAN adapter tests")
 
     score = read(SCRIPTS / "score_cis.py")
     tactical = read(SCRIPTS / "tactical_setup_gate.py")
@@ -289,10 +337,13 @@ def main() -> int:
     validate_workflow = read(REPO_ROOT / ".github" / "workflows" / "cis-validate.yml")
     require(validate_workflow, (
         '"AGENT_ARCHITECTURE.md"',
+        '"integrations/lean/**"',
         "Validate CIS architecture and contracts",
         "Compile CIS Core",
+        "Compile LEAN Integration",
         "Compile Optional Research Tooling",
         "Run CIS Core unit tests",
+        "Run LEAN Integration unit tests",
         "Run Optional Research Tooling unit tests",
     ), "CIS validate workflow")
 
@@ -320,7 +371,11 @@ def main() -> int:
         if forbidden_bundle.exists():
             raise AssertionError(f"third-party source must not be bundled directly: {forbidden_bundle.name}")
 
-    print(f"CIS {CIS_VERSION} contract and security validation passed")
+    for forbidden_lean_bundle in (LEAN / "Lean", LEAN / "engine", LEAN / "upstream"):
+        if forbidden_lean_bundle.exists():
+            raise AssertionError(f"QuantConnect LEAN source must remain external: {forbidden_lean_bundle.name}")
+
+    print(f"CIS {CIS_VERSION} contract, security and LEAN integration validation passed")
     return 0
 
 
