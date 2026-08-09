@@ -1,4 +1,4 @@
-# Original TradingAgents Runtime Adapter（CIS 0.4.1）
+# Original TradingAgents Runtime Adapter（CIS 0.4.2）
 
 本文件只定义**原版 TradingAgents Python** 的运行与验证规则。CIS 日常股票研究默认使用 `tradingagents-methodology.md` 的 ChatGPT-native 稳定方法论，不要求运行本程序。
 
@@ -16,20 +16,27 @@
 
 普通“分析 MU / NVDA能买吗 / QQQ要不要卖”不自动启动原版。
 
-## 运行状态
+## 运行状态必须拆分
 
-1. `installed_ready`：当前环境可导入 `tradingagents`，模型/API/数据源可用，并且 `.propagate()` 本次成功。
-2. `installed_limited`：包可运行但模型/数据/市场存在限制。
-3. `remote_ready`：GitHub Actions 远程运行成功，结果身份完整匹配。
-4. `remote_limited`：远程链路失败/超时/结果不完整。
-5. `upstream_only`：只能读取上游方法/代码，未实际运行。
-6. `unavailable`：上游和运行路径都不可用。
-7. `blocked`：任务必须依赖原版结果但继续会迫使系统猜测。
+从 0.4.2 起，不再把 `remote_ready` 当作研究质量标签。
+
+```text
+execution_status = success | error | invalid_input | unavailable
+runtime_readiness = installed_ready | installed_limited | remote_ready | remote_limited | upstream_only | blocked
+
+evidence_audit_status = not_run | pass | unresolved | fail
+research_quality = unreviewed | accepted | rejected
+```
+
+- `execution_status=success`：程序完成。
+- `runtime_readiness=remote_ready`：远程程序链路完成。
+- `evidence_audit_status=not_run`：尚未通过 CIS 证据审计。
+- `research_quality=unreviewed`：结果只能作为候选，不能直接用作最终投资判断。
 
 ## GitHub Actions 远程测试桥
 
 ```text
-runtime/tradingagents/request.json
+显式 request
   ↓
 .github/workflows/cis-tradingagents.yml
   ↓
@@ -39,35 +46,50 @@ TradingAgentsGraph(...).propagate(...)
   ↓
 runtime/tradingagents/results/<request_id>.json
   ↓
-CIS 校验
+CIS Evidence/Risk/Score 审计
   ↓
 external_decision_candidate
 ```
 
 远程 runner：`scripts/run_tradingagents_remote.py`。
 
-只有同时满足以下条件，才能声称“本次原版 TradingAgents 已实际运行”：
+### 手动运行防旧请求
+
+`workflow_dispatch` 现在要求显式填写：`request_id`、`ticker`、`analysis_date`、backend/model/analysts 等参数，并在 runner 内生成临时 request。手动点击 workflow 不再自动复用仓库里陈旧的 `runtime/tradingagents/request.json`。
+
+Push 触发仍可通过明确修改 `runtime/tradingagents/request.json` 使用。
+
+## 原版结果最低身份校验
+
+只有同时满足以下条件，才能声称“本次原版 TradingAgents 程序已实际运行”：
 
 - request_id 完全匹配；
 - ticker 完全匹配；
 - analysis_date 完全匹配；
-- `status == success`；
-- `runtime_readiness == remote_ready`；
-- `tradingagents_upstream_sha` 存在；
-- `external_decision_candidate` 非空；
-- 数据来源与 `as_of` 可被 CIS 审计。
+- `execution_status == success`；
+- `runtime_readiness == remote_ready` 或本地 `installed_ready`；
+- `tradingagents_upstream_sha` 存在（远程）；
+- `external_decision_candidate` 非空。
+
+即使全部满足，也只能说**程序执行成功**。要成为可接受研究输入还必须：
+
+- `evidence_audit_status == pass`；
+- `research_quality == accepted`；
+- 关键数据/事实通过 CIS as_of 和来源审计。
 
 ## 模型后端纪律
 
-原版运行只是显式测试能力，不再为 CIS 设定长期“默认云模型”。模型端点可能下线、限流或改名，因此每次测试必须：
+原版运行只是显式测试能力，不为 CIS 设定长期“默认云模型”。模型端点可能下线、限流或改名，因此每次测试必须：
 
-1. 先验证当前模型 ID/端点仍可用；
+1. 验证当前模型 ID/端点仍可用；
 2. 不把 API key 写入 request、result、日志或仓库文件；
 3. 云后端只通过 GitHub Actions Secret 注入；
 4. 模型失败不得冒充 TradingAgents 研究结果；
-5. 模型强弱不能绕过 CIS Evidence、Risk、Score、Regime 和四层交易框架。
+5. 模型强弱不能绕过 CIS Evidence、Risk、Critical Dimension、Score、Regime 和四层交易框架。
 
-`backend=openai_compatible` 可用于 NVIDIA NIM 等兼容端点；零密钥 smoke test 可使用 Ollama，但它只用于可执行性验证，不代表正式研究质量。
+`backend=openai_compatible` 支持通用兼容端点。GitHub workflow 会尝试注入 `OPENAI_COMPATIBLE_API_KEY`、`TRADINGAGENTS_API_KEY`、`NVIDIA_API_KEY`；不存在的 secret 为空，不会写入仓库。
+
+零密钥 smoke test 可使用 Ollama，但只验证可执行性，不代表正式研究质量。
 
 ## selected_analysts
 
@@ -83,6 +105,8 @@ external_decision_candidate
 
 - GitHub Runtime Guard；
 - Evidence / `as_of` / look-ahead 审计；
+- Risk Review；
+- Critical Dimension Gate；
 - Quant 与 Backtest 规则；
 - CIS 八维评分；
 - Market Regime；
@@ -93,13 +117,6 @@ external_decision_candidate
 
 ## 上游更新
 
-日常研究不使用定时 GitHub Actions 监控 TradingAgents。上游检查由 `runtime/tradingagents/upstream-status.json` 控制，采用 **7 天 TTL**：
+日常方法论更新采用 **7 天 TTL** 的使用时检查：`scripts/check_tradingagents_upstream.py` + `runtime/tradingagents/upstream-status.json`。
 
-- `last_checked_at` 距当前不足 7 天：不访问上游；
-- 达到或超过 7 天：下一次股票研究轻量检查当前 `main` SHA；
-- SHA 未变：只刷新检查时间；
-- SHA 变化：标记 `review_required`，当次继续使用 CIS 已验证稳定方法论；
-- 上游不可访问：不阻塞研究，记录限制；
-- 用户明确要求检查更新：可忽略 TTL 立即检查。
-
-只有审查确认研究逻辑有价值后，才更新 `tradingagents-methodology.md` 和 `reviewed_sha`。禁止上游代码自动覆盖 CIS 方法论。
+不使用定时 GitHub Actions。SHA 变化只标记 `review_required`，不会自动覆盖 `tradingagents-methodology.md`。原版显式测试则每次直接拉取当时上游当前 `main`。
