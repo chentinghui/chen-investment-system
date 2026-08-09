@@ -9,9 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = ROOT.parent
 SKILL = ROOT / "SKILL.md"
 REFS = ROOT / "references"
-STOCK_ASSISTANT = SKILLS_ROOT / "stock-research-assistant" / "SKILL.md"
 REPO_ROOT = ROOT.parents[3]
 REMOTE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "cis-tradingagents.yml"
+UPSTREAM_WATCH = REPO_ROOT / ".github" / "workflows" / "cis-tradingagents-upstream-watch.yml"
+UPSTREAM_STATUS = REPO_ROOT / "runtime" / "tradingagents" / "upstream-status.json"
+PLUGIN_JSON = ROOT.parents[1] / ".codex-plugin" / "plugin.json"
 
 
 def read(path: Path) -> str:
@@ -32,112 +34,72 @@ def main() -> int:
     registry = read(REFS / "module-registry.md")
     routing = read(REFS / "module-routing.md")
     external = read(REFS / "external-modules.md")
+    methodology = read(REFS / "tradingagents-methodology.md")
     tradingagents = read(REFS / "tradingagents.md")
     anthropic = read(REFS / "anthropic-financial-services.md")
     orchestration = read(REFS / "agent-orchestration.md")
     agent_registry = read(REFS / "agent-registry.md")
-    output_modes = read(REFS / "output-modes.md")
-    contract = read(REFS / "io-contract.md")
-    evidence = read(REFS / "evidence-confidence.md")
-    profile = read(REFS / "investor-profile.md")
-    lifecycle = read(REFS / "research-lifecycle.md")
-    premium = read(REFS / "cross-border-etf-premium.md")
-    evaluations = read(REFS / "evaluation-cases.md")
-    premium_analyzer = read(ROOT / "scripts" / "analyze_etf_premium.py")
-    premium_tests = read(ROOT / "scripts" / "test_analyze_etf_premium.py")
-    ta_adapter = read(ROOT / "scripts" / "run_tradingagents.py")
-    ta_remote = read(ROOT / "scripts" / "run_tradingagents_remote.py")
+    scoring = read(REFS / "scoring-engine.md")
+    quant = read(REFS / "quant-engine.md")
+    backtest = read(REFS / "backtest-validation.md")
+    regime = read(REFS / "market-regime.md")
+    performance = read(REFS / "performance-loop.md")
     remote_workflow = read(REMOTE_WORKFLOW)
-    assistant = read(STOCK_ASSISTANT)
+    upstream_watch = read(UPSTREAM_WATCH)
+    upstream_status = read(UPSTREAM_STATUS)
+    plugin_json = read(PLUGIN_JSON)
+    quant_script = read(ROOT / "scripts" / "quant_factor_engine.py")
+    backtest_script = read(ROOT / "scripts" / "backtest_factor_strategy.py")
+    regime_script = read(ROOT / "scripts" / "classify_market_regime.py")
+    performance_script = read(ROOT / "scripts" / "evaluate_cis_predictions.py")
 
     require(
         skill,
         [
-            "0.3.1",
-            "TradingAgents",
-            "GitHub Actions 远程路径",
-            "runtime/tradingagents/request.json",
-            "remote_ready",
-            "selected_analysts",
-            "Anthropic Financial Services",
-            "唯一用户入口",
-            "自动触发规则",
-            "分析 MU",
-            "纯事实型问题",
-            "Runtime Guard",
-            "external_decision_candidate",
+            "0.4.0",
+            "ChatGPT-native TradingAgents Methodology",
+            "Quant Research Engine",
+            "Backtest / Validation",
+            "Market Regime",
+            "Performance Loop",
+            "原版 TradingAgents：显式测试模式",
+            "upstream-status.json",
+            "Evidence",
             "scoring-engine.md",
             "four-layer-trading-framework.md",
             "cross-border-etf-premium.md",
+            "CIS 不自动下单",
         ],
         "CIS skill",
     )
-    require(
-        workflow,
-        ["CIS 0.3", "TradingAgents", "Anthropic Financial Services", "Fallback adapters", "CIS 八维统一评分", "四层结构", "ETF / QDII", "跟踪与复盘"],
-        "workflow",
-    )
-    require(
-        registry,
-        ["TradingAgents Core", "upstream_default", "external_decision_candidate", "Anthropic Financial Services", "Trading Framework", "ETF / QDII"],
-        "registry",
-    )
-    require(
-        routing,
-        ["TradingAgents", "Anthropic", "运行前检查", "Fallback 路由", "四层交易框架", "不得声称已运行"],
-        "routing",
-    )
-    require(
-        external,
-        ["TradingAgents（默认通用研究核心）", "v0.3.1", "Apache License 2.0", "external_decision_candidate", "Anthropic Financial Services"],
-        "external module policy",
-    )
-    require(
-        tradingagents,
-        [
-            "CIS 0.3.1",
-            "remote_ready",
-            "remote_limited",
-            "GitHub Actions 远程桥",
-            "runtime/tradingagents/results/<request_id>.json",
-            "selected_analysts",
-            "run_tradingagents_remote.py",
-            "external_decision_candidate",
-            "upstream_only",
-        ],
-        "TradingAgents adapter policy",
-    )
+    require(workflow, ["CIS 0.4", "Quant Pre-screen", "Market Regime", "Backtest / Calibration", "原版 TradingAgents 测试路径"], "workflow")
+    require(registry, ["ChatGPT-native TradingAgents Methodology", "Quant Research Engine", "Backtest / Validation", "Market Regime Layer", "Performance Loop", "explicit_test_only"], "module registry")
+    require(routing, ["ChatGPT-native TradingAgents Methodology", "Quant Engine", "Backtest / Validation", "Market Regime", "Performance Loop", "原版 TradingAgents"], "module routing")
+    require(external, ["日常股票研究默认", "review_required", "external_decision_candidate", "Anthropic Financial Services"], "external modules")
+    require(methodology, ["多角色独立性协议", "Source separation", "No fact creation by manager", "Risk independence", "Quant Engine"], "TradingAgents methodology")
+    require(tradingagents, ["explicit", "remote_ready", "external_decision_candidate", "openai_compatible", "上游更新"], "original TradingAgents runtime")
     require(anthropic, ["dcf-model", "comps-analysis", "earnings-analysis", "thesis-tracker"], "Anthropic policy")
-    require(orchestration, ["TradingAgents", "Anthropic", "避免重复分析", "external_decision_candidate", "最终综合顺序"], "orchestration")
-    require(agent_registry, ["fallback adapters", "TradingAgents Analyst Team", "证据审计员", "CIS 专属规则适配器"], "agent registry")
-    require(output_modes, ["Quick", "Standard", "Deep", "Holding Review", "资料截止时间"], "output modes")
-    require(contract, ["runtime_readiness", "thesis_falsifiers", "evidence:", "thesis:", "valuation:"], "I/O contract")
-    require(evidence, ["A 级", "B 级", "C 级", "D 级", "综合置信度"], "evidence policy")
-    require(profile, ["status: 未设置", "maximum_single_position", "drawdown_tolerance"], "profile")
-    require(lifecycle, ["research_id", "thesis_falsifiers", "change_since_prior"], "lifecycle")
-    require(premium, ["产品身份门", "entry_premium", "结构性溢价", "风险提示公告", "通用阈值"], "cross-border ETF premium policy")
-    require(evaluations, ["分析 MU", "MU现在能买吗", "MU全称是什么", "TradingAgents 包未安装", "external_decision_candidate", "Anthropic DCF", "159509", "英伟达186美元"], "evaluation cases")
-    require(premium_analyzer, ["def analyze", "current_premium_pct", "entry_premium_pct", "premium_regime"], "ETF premium analyzer")
-    require(premium_tests, ["159509", "insufficient_history", "rejects_non_positive_values"], "ETF premium tests")
-    require(ta_adapter, ["TradingAgentsGraph", "propagate", "external_decision_candidate", "probe-only", "upstream_only"], "TradingAgents local runtime adapter")
-    require(
-        ta_remote,
-        ["TradingAgentsGraph", "selected_analysts", "remote_ready", "external_decision_candidate", "qwen3:4b-instruct", "openai_compatible"],
-        "TradingAgents remote runtime adapter",
-    )
-    require(
-        remote_workflow,
-        ["runtime/tradingagents/request.json", "TauricResearch/TradingAgents", "OLLAMA_CONTEXT_LENGTH=32768", "run_tradingagents_remote.py", "runtime/tradingagents/results"],
-        "TradingAgents GitHub Actions workflow",
-    )
-    require(assistant, ["旧版中文入口兼容层", "调用 `$cis`", "TradingAgents", "Anthropic Financial Services"], "legacy stock assistant")
+    require(orchestration, ["多角色独立性", "Quant", "Market Regime", "Performance", "最终综合顺序"], "orchestration")
+    require(agent_registry, ["Quant Research Engine", "Backtest Validator", "Market Regime Layer", "Performance Loop", "Research Manager"], "agent registry")
+    require(scoring, ["fundamentals", "growth", "valuation", "coverage >= 85%", "最终动作不能只由分数决定"], "scoring")
+    require(quant, ["quant_score", "cis_score", "experimental_uncalibrated", "point-in-time", "factor_coverage"], "quant policy")
+    require(backtest, ["Look-ahead bias", "Survivorship bias", "walk-forward", "Sharpe Ratio", "transaction"], "backtest policy")
+    require(regime, ["risk_on", "neutral", "risk_off", "insufficient", "experimental"], "market regime")
+    require(performance, ["realized_return", "benchmark_return", "out_of_sample", "禁止", "自动覆盖"], "performance loop")
+    require(remote_workflow, ["TauricResearch/TradingAgents", "run_tradingagents_remote.py", "NVIDIA_API_KEY"], "original TradingAgents workflow")
+    require(upstream_watch, ["schedule", "TauricResearch/TradingAgents/commits/main", "review_required", "do_not_auto_apply"], "upstream watch")
+    require(upstream_status, ["observed_sha", "reviewed_sha", "review_status", "detect_only_do_not_auto_apply_methodology_changes"], "upstream status")
+    require(plugin_json, ['"version": "0.4.0"', "quant-research", "market-regime"], "plugin metadata")
+    require(quant_script, ["DEFAULT_FACTORS", "average_percentile_ranks", "factor_coverage", "experimental_uncalibrated"], "quant script")
+    require(backtest_script, ["max_drawdown", "annualized_metrics", "forward_return", "transaction_cost_bps_per_rebalance"], "backtest script")
+    require(regime_script, ["risk_on", "risk_off", "breadth_above_sma200_pct", "experimental_baseline"], "regime script")
+    require(performance_script, ["score_bucket", "realized_return", "score_return_correlation", "calibration_report"], "performance script")
 
     for relative in re.findall(r"`(references/[^`]+\.md)`", skill):
         if not (ROOT / relative).is_file():
             raise AssertionError(f"broken SKILL.md reference: {relative}")
 
     forbidden_bundles = [
-        SKILLS_ROOT / "buffett",
         SKILLS_ROOT / "public-equity-investing",
         SKILLS_ROOT / "tradingagents",
     ]
@@ -145,7 +107,7 @@ def main() -> int:
         if path.exists():
             raise AssertionError(f"third-party source must not be bundled directly: {path.name}")
 
-    print("CIS 0.3.1 plugin validation passed")
+    print("CIS 0.4.0 plugin validation passed")
     return 0
 
 
