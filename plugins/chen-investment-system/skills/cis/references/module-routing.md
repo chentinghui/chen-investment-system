@@ -1,65 +1,58 @@
-# CIS 0.3 模块路由
+# CIS 0.4 模块路由
 
 ## 总原则
 
-CIS 是唯一用户入口和最终质量控制层。对于股票/上市公司研究，默认先尝试 TradingAgents；专业金融建模再按需调用 Anthropic Financial Services。外部核心不可运行时，才启用 CIS 自写专家作为 fallback adapters。
+CIS 是唯一用户入口和最终质量控制层。
+
+- 单股票/上市公司研究：默认 `ChatGPT-native TradingAgents Methodology`。
+- 大股票池筛选：先 `Quant Research Engine`，再对候选做多角色深研。
+- 专业估值/财报/模型：按需 `Anthropic Financial Services`。
+- 当前市场环境显著影响交易计划：加 `Market Regime Layer`。
+- 新规则/因子需要证明有效：走 `Backtest / Validation`。
+- 历史研究需要校准：走 `Performance Loop`。
+- 原版 TradingAgents Python：仅用户明确要求运行/测试时调用。
 
 ## 默认路由
 
-| 用户意图 | 默认核心 | 专业增强 | CIS 最终校验 |
+| 用户意图 | 默认核心 | 增强/验证 | CIS 最终校验 |
 |---|---|---|---|
-| 一般股票研究、值不值得研究 | TradingAgents 全链路 | Anthropic（如需估值/财报深挖） | 证据门 + 八维评分 |
-| 基本面 + 技术 + 新闻 + 情绪综合 | TradingAgents | — | 证据审计 + CIS评分 |
-| 多空观点、上涨/下跌逻辑 | TradingAgents Bull/Bear Debate | Anthropic 专业证据（适用时） | 不按多数票；解释冲突 |
-| 价值区间、DCF、市场隐含预期 | TradingAgents 作为上下文 | Anthropic `dcf-model` / `comps-analysis` | valuation维度 + 证据门 |
-| 财务数据清洗、三表、模型审计 | — | Anthropic `clean-data-xls` / `3-statement-model` / `audit-xls` | 财务口径核验 |
-| 业绩前怎么看 | TradingAgents 新闻/市场背景 | Anthropic `earnings-preview` | catalyst/valuation更新 |
-| 业绩后论点是否改变 | TradingAgents 通用研究 | Anthropic `earnings-analysis` / `model-update` | 论点证伪 + 评分变化 |
-| 买入、卖出、持有、加减仓 | TradingAgents 候选决策 | Anthropic 估值/财报（必要时） | **强制四层交易框架 + 组合门** |
-| 宏观事件影响股票 | TradingAgents News Analyst | Anthropic `sector-overview`（适用时） | 宏观→行业→KPI传导 |
-| AI/行业主题筛选 | TradingAgents + 可验证数据 | Anthropic `idea-generation` / `sector-overview` | 主题→收入/利润证据 |
-| ETF 产品比较 | CIS ETF 模块 | 可用专业资料 | CIS 产品身份/持仓/费用纪律 |
-| 跨境 ETF / QDII 溢价 | CIS | — | **CIS 专属溢价纪律** |
-| 组合再平衡 | TradingAgents 单标的候选证据 | Anthropic thesis/catalyst（适用时） | **CIS组合数据门** |
+| 一般股票研究 | ChatGPT-native TradingAgents Methodology | Anthropic（按需） | Evidence + Risk + Score |
+| 基本面+技术+新闻综合 | ChatGPT-native Methodology | — | Evidence + Score |
+| 多空观点 | Bull/Bear 独立反证 | Research Manager | 冲突保留与裁决 |
+| 价值区间/DCF/Comps | ChatGPT-native 上下文 | Anthropic DCF/Comps | valuation + Evidence |
+| 财报前后 | ChatGPT-native News/Fundamentals | Anthropic Earnings | catalyst/valuation 更新 |
+| 买入/卖出/持有 | ChatGPT-native Methodology | Regime（按需） | 四层交易 + Portfolio Gate |
+| 大股票池 Top N | Quant Engine | Methodology 深研 Top N | CIS Score |
+| 量化规则是否有效 | Backtest / Validation | Performance Loop | 不自动改生产规则 |
+| 当前牛/熊/风险环境 | Market Regime | 宏观证据 | 不直接触发买卖 |
+| ETF / QDII | CIS ETF 模块 | 可验证产品数据 | ETF/QDII专属纪律 |
+| 组合再平衡 | 单标的研究 + Regime | Portfolio Gate | 真实组合数据门 |
+| 运行原版 TradingAgents | 原版 local/remote | A/B 验证 | external_decision_candidate 仅作输入 |
 
-## TradingAgents 运行前检查
+## Quant 路由规则
 
-1. 读取 `tradingagents.md`。
-2. 若环境可执行 Python，优先使用 `scripts/run_tradingagents.py --probe-only` 或等价导入检查。
-3. 确认模型 provider、API key、数据 provider 和目标市场可用。
-4. 历史日期任务检查是否存在前视偏差风险。
-5. 记录 `analysis_date`、行情/新闻/情绪来源与 `as_of`。
-6. 只有真实执行 `.propagate()` 成功，才可记录 `external_decision_candidate`。
-7. 未执行成功时不得把 TradingAgents README、历史输出或聊天记忆包装成本次结果。
+- 只有股票池规模足够大、用户明确要求排名/筛选/Top N，或需要系统化候选生成时运行。
+- `quant_score` 与 `cis_score` 分开。
+- baseline 因子权重标记 `experimental_uncalibrated`。
+- 缺失因子不补零；coverage 不足时不得强行排名为正式结果。
 
-## Anthropic 专业 Skill 路由
+## Backtest 路由规则
 
-TradingAgents 的通用分析不能替代以下专业工作：
+任何准备升级成默认规则的因子/阈值/权重，必须检查 look-ahead、survivorship、universe drift、成本与样本外稳定性。
 
-- DCF / Comps；
-- 三表模型 / 模型审计；
-- earnings preview / earnings analysis；
-- initiating coverage / model update；
-- competitive analysis；
-- thesis tracker / catalyst calendar。
+## Market Regime 路由规则
 
-对应任务按 `anthropic-financial-services.md` 选择最小匹配 Skill，并把结果作为证据回灌 CIS。
+Regime 只修正宏观/风险环境、安全边际和交易节奏，不直接覆盖公司基本面，也不产生机械买卖信号。
 
-## Fallback 路由
+## TradingAgents 原版运行规则
 
-若 TradingAgents 为 `upstream_only` / `unavailable` / `blocked`：
-
-1. 不伪造 TradingAgents 决策。
-2. 原 CIS 专家 Agent 以 fallback adapter 身份运行。
-3. Standard/Deep/Holding Review 仍必须保留证据审计。
-4. 专业金融任务仍优先使用可用 Anthropic Skills。
-5. 最终输出明确标注 TradingAgents 未实际运行及对置信度的影响。
+只有真实 `.propagate()` 成功且结果请求身份匹配，才能声称原版本次已运行。README、历史结果、上游可访问性不能冒充本次执行。
 
 ## 防重叠规则
 
-- TradingAgents Portfolio Manager 只产生候选决策，不拥有 CIS 最终动作权。
-- TradingAgents Risk Team 不替代 CIS 的 evidence gate、组合数据门和四层交易纪律。
-- TradingAgents Technical Analyst 不替代 CIS 四层交易框架。
-- Anthropic 只处理专业金融子问题，不拥有最终动作权。
-- CIS 自写专家在 TradingAgents 正常运行时不得重复跑同一职责，除非为验证关键冲突。
-- 最终顺序固定为：外部研究证据 → CIS证据审计 → 八维评分 → 四层/组合门（如适用）→ 最终中文研究姿态。
+- ChatGPT-native Analyst 已覆盖的职责不重复跑同职责 fallback Agent。
+- Quant 负责筛选，不重复做最终公司研究。
+- Anthropic 负责专业子问题，不拥有最终动作权。
+- Market Regime 不重复技术分析，只提供环境层。
+- Backtest/Performance 只验证和校准，不自动修改生产规则。
+- 最终顺序固定为：候选/证据 → 多角色研究 → 专业增强 → Evidence/Risk → CIS Score → Regime（按需）→ 四层/ETF/组合门 → 最终中文姿态。
