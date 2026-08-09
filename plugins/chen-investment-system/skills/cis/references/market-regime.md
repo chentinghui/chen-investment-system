@@ -1,4 +1,4 @@
-# CIS Market Regime Layer（0.4.3）
+# CIS Market Regime Layer（0.4.4）
 
 Market Regime Layer 用于描述当前市场环境，并决定**同一个股票信号需要多大确认度和风险折扣**。它不直接产生买卖动作，也不覆盖单公司基本面。
 
@@ -11,7 +11,7 @@ Market Regime Layer 用于描述当前市场环境，并决定**同一个股票�
 
 ## Regime Profile
 
-0.4.3 hardening 要求显式 `regime_profile`，避免不同人用不同指数/广度口径却得到同一个“Regime”。当前确定性 baseline：
+0.4.4 hardening 要求显式 `regime_profile`，避免不同人用不同指数/广度口径却得到同一个“Regime”。当前确定性 baseline：
 
 ```text
 us_broad_v1
@@ -60,7 +60,7 @@ realized_vol_20d
 
 这些只是防止明显陈旧数据混入“当前市场状态”的 baseline，不是最优预测参数。
 
-0.4.3 hardening 不再因为**一个** stale/missing-dated 信号就让整个 Regime 失效。处理顺序改为：
+0.4.4 hardening 不再因为**一个** stale/missing-dated 信号就让整个 Regime 失效。处理顺序改为：
 
 ```text
 已提供信号
