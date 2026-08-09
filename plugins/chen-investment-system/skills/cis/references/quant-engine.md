@@ -2,6 +2,8 @@
 
 Quant Engine 是 CIS 的**候选筛选与横截面排序层**，不是最终投资决策器，也不是自动交易器。
 
+当前 baseline 状态：`experimental_uncalibrated`。
+
 ## 目标
 
 - 从较大股票池中筛出值得进一步研究的候选；
