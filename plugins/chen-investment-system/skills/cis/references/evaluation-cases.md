@@ -1,25 +1,25 @@
-# CIS 0.2 代表性测试
+# CIS 0.3 代表性测试
 
-| 场景 | 预期模式 | 预期主模块 | 关键验收 |
+| 场景 | 预期模式 | 默认核心/模块 | 关键验收 |
 |---|---|---|---|
-| “简单看一下贵州茅台值不值得研究” | quick | Buffett（可用时） | 不给未经支持的目标价 |
-| “完整研究 AAPL，并做 DCF 和竞争分析” | deep | Valuation 或 Buffett，另一个为支持模块 | 只保留一个主模块；专业方法优先读取 Anthropic `dcf-model` / `competitive-analysis` |
-| “比较两只 ETF 的持仓重合度”但未提供持仓资料 | standard | ETF | ETF 模块为 blocked，并索取有日期的持仓 |
-| “我该不该减持这只股票”但未提供组合资料 | holding_review | Portfolio | 不给减持动作，列出缺失组合输入 |
-| “这家公司业绩发布后论点变了吗” | standard | Earnings | 优先读取 Anthropic `earnings-analysis` 并比较预期基线 |
-| “降息如何影响我的银行股” | standard 或 holding_review | Macro | 展示宏观到公司/持仓的传导链 |
-| “筛选 AI 数据中心受益公司” | standard | AI Industry | 主题敞口必须连接订单、收入、利润或资本回报 |
-| “股票研究助手分析腾讯” | standard | CIS | 旧入口转交 CIS，不直接调用其他模块 |
-| 只提供三年前财报并要求当前结论 | standard | 对应业务模块 | 就绪度 limited 或 blocked，降低证据置信度 |
-| Buffett 与 DCF 结论冲突 | standard 或 deep | CIS 综合 | 解释业务质量、预测、估值输入或期限差异，不做机械平均 |
-| 未安装 Buffett | quick 或 standard | CIS | Buffett 标记 unavailable，定性模块 limited/blocked，其他可用模块继续 |
-| Anthropic 目标 Skill 无法读取且无验证快照 | deep | CIS | 不伪造 DCF、Comps、Earnings 等专业工作流；对应模块 limited/blocked，并明确最小缺失能力或输入 |
-| GitHub 可访问且用户明确说“陈氏投资系统” | standard | CIS | 先核验 `chentinghui/chen-investment-system` 当前 `main`，禁止凭聊天记忆恢复旧评分或旧路由 |
-| 159509 长期处于两位数溢价、用户刚建仓或接近盈亏平衡 | holding_review | ETF | 不因绝对溢价或风险提示公告建议立即退出；先比较建仓溢价、历史区间、申赎状态和投资期限 |
-| 四只纳指 ETF 与一只纳斯达克科技市值加权 ETF 同时持有 | holding_review | ETF | 先核验精确基准；不得把所有产品称为完全重复，应区分同一基准、高持仓重合和共享风险因子 |
-| 用户给出市值和浮盈，但未给组合基准、约束与资金需求 | holding_review | Portfolio | 不输出精确卖出清单或再平衡比例，只列缺失输入和可验证风险 |
-| 高溢价跨境 ETF 发布停复牌或溢价提示公告 | standard 或 holding_review | ETF | 公告是复核触发器而非自动卖出信号；根据历史溢价、申赎机制和组合资料形成条件化结论 |
-| “英伟达186美元买入20股，现在能卖吗” | holding_review | Portfolio / Technical | 强制按趋势→价格→成交→风险输出；同时给继续持有区、两档盈利止盈区、回调观察区、防守卖出线和基本面失效条件 |
-| 英伟达或QQQ已经盈利，趋势、估值和量价仍健康 | holding_review | Portfolio / Technical | 不得仅因已有盈利机械建议卖出；必须明确说明“不卖也可以”，盈利止盈仅为可选分批方案 |
-| 用户问“为什么总是等亏损才卖” | holding_review | CIS 综合 | 同时解释盈利止盈与防守止损；上涨看压力、估值和量价异常，下跌看支撑和趋势破坏 |
-| 盘中NVDA或QQQ成交量仅达到全天均量的一部分 | standard 或 holding_review | CIS 综合 | 必须注明尚未收盘，不得直接把盘中量与全天20日均量比较并下结论 |
+| “简单看一下贵州茅台值不值得研究” | quick | TradingAgents（可运行时） | 先检查外部核心状态；不凭旧CIS Agent直接给结论 |
+| “完整研究 AAPL，并做 DCF 和竞争分析” | deep | TradingAgents + Anthropic | 通用研究走 TradingAgents；DCF/竞争分析走 Anthropic；最终回 CIS |
+| TradingAgents 包未安装但 GitHub 上游可读 | standard | CIS fallback | 标记 `upstream_only`；不得声称已运行 `.propagate()` |
+| TradingAgents `.propagate()` 成功返回 BUY | standard | TradingAgents + CIS | BUY 仅记为 `external_decision_candidate`；必须再过证据门与CIS评分 |
+| TradingAgents 与 Anthropic DCF 方向冲突 | deep | CIS综合 | 展示数据/假设/期限冲突，不机械平均目标价或投票 |
+| TradingAgents Technical 看多，但四层框架显示趋势破坏 | holding_review | CIS四层交易 | 四层框架拥有最终交易位置约束，不能被外部Technical覆盖 |
+| TradingAgents Portfolio Manager 给仓位，但用户未提供真实组合 | holding_review | CIS组合门 | 不采用精确仓位；列出缺失成本/权重/约束/资金需求 |
+| TradingAgents 代码版本很新但新闻数据陈旧 | standard | Evidence Audit | 明确区分代码更新与数据时效，降低证据置信度 |
+| 历史日期回测/复盘 | deep | TradingAgents + Evidence Audit | 禁止使用 `analysis_date` 之后的信息；检查 look-ahead leakage |
+| “这家公司业绩发布后论点变了吗” | standard | TradingAgents + Anthropic Earnings | Anthropic `earnings-analysis` 为专业核心，TradingAgents提供市场上下文 |
+| “比较两只 ETF 的持仓重合度”但未提供持仓资料 | standard | CIS ETF | ETF 模块 blocked/limited；不强制调用 TradingAgents |
+| 159509 两位数溢价、用户刚建仓 | holding_review | CIS ETF/QDII | 不因绝对溢价机械退出；比较建仓溢价、历史区间和申赎状态 |
+| 高溢价跨境 ETF 发布风险提示公告 | holding_review | CIS ETF/QDII | 公告只是复核触发器，不是自动卖出信号 |
+| “英伟达186美元买入20股，现在能卖吗” | holding_review | TradingAgents + CIS四层/组合门 | 同时给继续持有区、两档止盈、回调观察、防守线、基本面失效条件 |
+| 英伟达/QQQ已有盈利但趋势和估值仍健康 | holding_review | CIS四层交易 | 不因盈利机械卖出；明确止盈是可选方案 |
+| 盘中成交量尚未收盘 | standard/holding_review | Evidence Audit | 不把盘中量直接与全天均量比较 |
+| Anthropic DCF Skill 无法读取 | deep | TradingAgents + CIS fallback | 不伪造专业DCF；valuation维度 limited 或 blocked |
+| GitHub可访问且用户说“陈氏投资系统” | 任意 | Runtime Guard | 先核验 `chentinghui/chen-investment-system` 当前 `main` |
+| “股票研究助手分析腾讯” | standard | CIS | 旧入口只转交 CIS；CIS 再决定 TradingAgents/Anthropic 路由 |
+| TradingAgents运行失败 | standard/deep | CIS fallback adapters | 不终止整个CIS；按最小fallback团队继续并降低置信度 |
+| Buffett 与 TradingAgents 长期质量判断冲突 | deep | CIS综合 | Buffett仅作为定性外部视角，不直接推翻数据化研究；解释差异 |
