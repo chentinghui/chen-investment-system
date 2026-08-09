@@ -31,14 +31,14 @@ jobs:
           cd integrations/lean/strategies/qqq_sma20_50
           python -m unittest -v test_strategy_logic.py
 
-      - name: Build public QQQ and cash-rate test dataset
+      - name: Build public adjusted QQQ test dataset
         shell: bash
         run: |
           mkdir -p .tmp_lean/data/custom .tmp_lean/results
           python - <<'PY'
           import csv
-          import io
           import json
+          import time
           import urllib.parse
           import urllib.request
           from datetime import datetime, timezone
@@ -54,32 +54,30 @@ jobs:
               "events": "history",
               "includeAdjustedClose": "true",
           })
-          yahoo_url = f"https://query1.finance.yahoo.com/v8/finance/chart/QQQ?{params}"
-          request = urllib.request.Request(yahoo_url, headers={"User-Agent": "CIS-LEAN-Engine-Test/1.0"})
-          with urllib.request.urlopen(request, timeout=30) as response:
-              yahoo = json.load(response)["chart"]["result"][0]
 
-          fred_url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS3MO"
-          request = urllib.request.Request(fred_url, headers={"User-Agent": "CIS-LEAN-Engine-Test/1.0"})
-          with urllib.request.urlopen(request, timeout=30) as response:
-              fred_text = response.read().decode("utf-8")
+          payload = None
+          errors = []
+          for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
+              url = f"https://{host}/v8/finance/chart/QQQ?{params}"
+              for attempt in range(3):
+                  try:
+                      request = urllib.request.Request(url, headers={"User-Agent": "CIS-LEAN-Engine-Test/1.0"})
+                      with urllib.request.urlopen(request, timeout=30) as response:
+                          payload = json.load(response)["chart"]["result"][0]
+                      break
+                  except Exception as exc:
+                      errors.append(f"{host} attempt {attempt + 1}: {type(exc).__name__}: {exc}")
+                      time.sleep(attempt + 1)
+              if payload is not None:
+                  break
+          if payload is None:
+              raise SystemExit("Yahoo QQQ download failed: " + " | ".join(errors))
 
-          rates = {}
-          last_rate = 0.0
-          for row in csv.DictReader(io.StringIO(fred_text)):
-              value = row.get("DGS3MO", ".")
-              if value not in ("", "."):
-                  last_rate = float(value) / 100.0
-              rates[row["DATE"]] = last_rate
-
-          timestamps = yahoo["timestamp"]
-          quote = yahoo["indicators"]["quote"][0]
-          adjclose = yahoo["indicators"]["adjclose"][0]["adjclose"]
+          timestamps = payload["timestamp"]
+          quote = payload["indicators"]["quote"][0]
+          adjclose = payload["indicators"]["adjclose"][0]["adjclose"]
 
           rows = []
-          carried_rate = 0.0
-          sorted_rate_dates = sorted(rates)
-          rate_index = 0
           for ts, opn, high, low, close, adj in zip(
               timestamps,
               quote["open"], quote["high"], quote["low"], quote["close"], adjclose
@@ -87,9 +85,6 @@ jobs:
               if None in (opn, high, low, close, adj) or close == 0:
                   continue
               date = datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
-              while rate_index < len(sorted_rate_dates) and sorted_rate_dates[rate_index] <= date:
-                  carried_rate = rates[sorted_rate_dates[rate_index]]
-                  rate_index += 1
               factor = float(adj) / float(close)
               rows.append([
                   date,
@@ -97,7 +92,6 @@ jobs:
                   float(high) * factor,
                   float(low) * factor,
                   float(adj),
-                  carried_rate,
               ])
 
           if not rows or rows[-1][0] != "2026-08-07":
@@ -106,9 +100,9 @@ jobs:
           output = Path(".tmp_lean/data/custom/qqq_sma20_50.csv")
           with output.open("w", newline="", encoding="utf-8") as f:
               writer = csv.writer(f)
-              writer.writerow(["date", "open", "high", "low", "close", "cash_rate"])
+              writer.writerow(["date", "open", "high", "low", "close"])
               writer.writerows(rows)
-          print(f"dataset rows={len(rows)} start={rows[0][0]} end={rows[-1][0]} last_cash_rate={rows[-1][5]:.6f}")
+          print(f"dataset rows={len(rows)} start={rows[0][0]} end={rows[-1][0]}")
           PY
 
       - name: Build LEAN runtime config
