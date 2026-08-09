@@ -1,0 +1,46 @@
+name: CIS Validate
+
+on:
+  push:
+    paths:
+      - "plugins/chen-investment-system/**"
+      - ".github/workflows/cis-validate.yml"
+      - ".github/workflows/cis-tradingagents-upstream-watch.yml"
+      - "runtime/tradingagents/upstream-status.json"
+      - "README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate CIS architecture
+        run: |
+          python plugins/chen-investment-system/skills/cis/scripts/validate_cis.py
+
+      - name: Compile deterministic scripts
+        run: |
+          python -m py_compile \
+            plugins/chen-investment-system/skills/cis/scripts/score_cis.py \
+            plugins/chen-investment-system/skills/cis/scripts/analyze_etf_premium.py \
+            plugins/chen-investment-system/skills/cis/scripts/quant_factor_engine.py \
+            plugins/chen-investment-system/skills/cis/scripts/backtest_factor_strategy.py \
+            plugins/chen-investment-system/skills/cis/scripts/classify_market_regime.py \
+            plugins/chen-investment-system/skills/cis/scripts/evaluate_cis_predictions.py
+
+      - name: Run deterministic unit tests
+        run: |
+          python -m unittest discover \
+            -s plugins/chen-investment-system/skills/cis/scripts \
+            -p "test_*.py"
