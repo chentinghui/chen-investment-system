@@ -1,14 +1,18 @@
-# CIS 外部模块适配与降级（0.4.0）
+# CIS 外部模块适配与降级（0.4.1）
 
 外部模块的“存在/可访问”和“本次任务已就绪”必须分开判断。README、历史运行记录、聊天记忆或模块名称都不能证明本次已运行。
 
 ## TradingAgents 上游
 
 - 上游：`TauricResearch/TradingAgents`。
-- CIS 日常股票研究默认**不运行其 Python 程序**，而是使用 `tradingagents-methodology.md` 的 ChatGPT-native 方法论。
+- CIS 日常股票研究默认**不运行其 Python 程序**，而是使用 `tradingagents-methodology.md` 的 ChatGPT-native 稳定方法论。
 - 原版 Python 只用于用户明确要求的运行/测试、A/B 验证或上游功能审查。
 - 远程显式测试每次重新 clone 上游当前 `main`。
-- 上游 SHA 由 `.github/workflows/cis-tradingagents-upstream-watch.yml` 自动检测；变化时 `runtime/tradingagents/upstream-status.json` 标记 `review_required`。
+- 日常上游检查采用 `runtime/tradingagents/upstream-status.json` 的 **7 天 TTL**：距离 `last_checked_at` 不足 7 天时不访问上游；达到或超过 7 天后，由下一次实际股票研究轻量检查一次当前 `main` SHA。
+- SHA 未变化时只刷新检查时间；SHA 变化时标记 `review_required`，当次仍使用 CIS 已验证稳定基线。
+- 上游暂时不可访问不阻塞正常研究；披露 `upstream_check=unavailable`，后续再尝试。
+- 用户明确要求“检查 TradingAgents 更新”时可忽略 TTL 立即检查。
+- **不再使用定时 GitHub Actions 监控 TradingAgents 上游。**
 - 上游变化不得自动覆盖 CIS 方法论。
 
 ### 原版运行状态
