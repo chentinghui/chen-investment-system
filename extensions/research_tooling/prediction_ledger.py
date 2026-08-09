@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_LEDGER = Path("runtime/evaluations/predictions.jsonl")
-DEFAULT_HORIZONS_TRADING_DAYS = (20, 60, 120, 250)
+DEFAULT_HORIZONS_TRADING_DAYS = (5, 20, 60)
 REQUIRED_PREDICTION_FIELDS = {
     "research_id",
     "as_of",
