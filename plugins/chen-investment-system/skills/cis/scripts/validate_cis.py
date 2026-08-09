@@ -71,24 +71,21 @@ def main() -> int:
     if DELETED_UPSTREAM_WATCH.exists():
         raise AssertionError("scheduled TradingAgents upstream watch must remain removed")
 
-    require_version(skill, version, "CIS skill")
-    require_version(workflow, version, "system workflow")
-    require_version(registry, version, "module registry")
-    require_version(routing, version, "module routing")
-    require_version(external, version, "external modules")
-    require_version(methodology, version, "TradingAgents methodology")
-    require_version(scoring, version, "scoring engine")
-    require_version(backtest, version, "backtest policy")
-    require_version(regime, version, "market regime")
-    require_version(performance, version, "performance loop")
-    require_version(readme, version, "README")
+    for text, label in [
+        (skill, "CIS skill"), (workflow, "system workflow"), (registry, "module registry"),
+        (routing, "module routing"), (external, "external modules"),
+        (methodology, "TradingAgents methodology"), (scoring, "scoring engine"),
+        (quant, "quant policy"), (backtest, "backtest policy"), (regime, "market regime"),
+        (performance, "performance loop"), (readme, "README"),
+    ]:
+        require_version(text, version, label)
 
     plugin_json = json.loads(plugin_json_text)
     if plugin_json.get("version") != version:
         raise AssertionError(f"plugin metadata version must equal {version}")
 
     require(skill, [
-        "fail-closed", "Critical Dimension Gate", "check_tradingagents_upstream.py",
+        "Fail-Closed", "Critical Dimension Gate", "check_tradingagents_upstream.py",
         "Prediction Ledger", "execution_status", "research_quality", "Quant Factor Ranking",
         "同一 as_of", "CIS 不自动下单",
     ], "CIS skill")
@@ -102,8 +99,8 @@ def main() -> int:
     require(orchestration, ["多角色独立性", "Quant", "Market Regime", "Performance", "最终综合顺序"], "orchestration")
     require(agent_registry, ["Prediction Ledger", "Critical Dimension Gate", "TradingAgents TTL Checker", "Research Manager"], "agent registry")
     require(scoring, ["audit_status = unverified", "risk_status  = unverified", "Critical Dimension Gate", "valuation", "decision_grade"], "scoring")
-    require(quant, ["quant_score", "cis_score", "experimental_uncalibrated", "point-in-time"], "quant policy")
-    require(backtest, ["one_way_turnover", "out_of_sample", "Transaction", "换手"], "backtest policy")
+    require(quant, ["quant_score", "cis_score", "experimental_uncalibrated", "point-in-time", "max_drawdown_1y"], "quant policy")
+    require(backtest, ["one_way_turnover", "out_of_sample", "交易成本", "换手"], "backtest policy")
     require(regime, ["JSON boolean", "high_yield_oas_bps", "realized_vol_20d", "experimental_baseline"], "market regime")
     require(performance, ["predictions.jsonl", "append-only", "horizon", "dimension", "禁止"], "performance loop")
 
