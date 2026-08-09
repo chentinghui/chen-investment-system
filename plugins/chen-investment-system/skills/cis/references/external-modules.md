@@ -1,4 +1,4 @@
-# CIS 外部模块适配与降级（0.4.3）
+# CIS 外部模块适配与降级（0.4.4）
 
 外部模块的“存在/可访问”“程序执行成功”“研究质量通过”必须分开判断。README、历史运行记录、聊天记忆或模块名称都不能证明本次已运行，更不能证明结果可靠。
 
@@ -42,7 +42,7 @@ Anthropic `financial-services` 是 CIS 首选专业金融 Skill 上游，用于 
 
 - 代码/Skill 可用不等于数据已授权或实时；
 - 行情、财报、新闻、宏观、机构持仓、资金流必须记录实际来源和 `as_of`；
-- 短线行情必须区分 regular / premarket / afterhours / last_close，并记录 quote timestamp；
+- 短线行情必须记录 exchange、quote timestamp，并由 CIS 验证 regular / premarket / afterhours / last_close 语义及 quote freshness；
 - 历史研究必须使用 point-in-time 数据，禁止 look-ahead leakage；
 - 数据不可用时可降级到公开资料/用户资料，但必须说明覆盖限制。
 
