@@ -1,11 +1,11 @@
-# CIS 0.4 系统流程
+# CIS 0.4.1 系统流程
 
 ## 0. Runtime Guard
 
 1. 读取当前 `SKILL.md` 与必读 references。
 2. 若可访问 GitHub，核验 `chentinghui/chen-investment-system` 当前 `main`。
 3. 读取 `tradingagents-methodology.md` 作为股票默认研究方法。
-4. 读取 `runtime/tradingagents/upstream-status.json`；`review_required` 时禁止自动采用未审查上游变化。
+4. 读取 `runtime/tradingagents/upstream-status.json`：距离 `last_checked_at` 不足 `check_ttl_days=7` 时直接使用稳定基线，不访问上游；达到或超过 7 天时，由下一次股票研究轻量检查 TradingAgents 当前 `main` SHA。SHA 变化标记 `review_required`，未经审查不得采用新逻辑。
 5. 原版 TradingAgents 仅在用户明确要求运行/测试时启动。
 6. 专业金融子问题按需路由 Anthropic Financial Services。
 
