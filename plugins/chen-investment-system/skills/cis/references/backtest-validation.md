@@ -1,4 +1,4 @@
-# CIS Backtest / Validation Policy
+# CIS Backtest / Validation Policy（0.4.2）
 
 回测的用途是**验证规则是否在历史上具有统计价值**，不是证明未来一定有效。
 
@@ -19,7 +19,8 @@
 - 胜率；
 - 基准超额收益；
 - 按分数/分位数组的未来收益单调性；
-- 样本数量与覆盖时间。
+- 样本数量与覆盖时间；
+- 平均换手率与累计交易成本。
 
 ## 强制偏差检查
 
@@ -27,7 +28,7 @@
 2. **Survivorship bias**：股票池必须尽可能包含退市/被并购/后来被剔除的标的。
 3. **Universe drift**：历史指数成分不能用今天的成分回填。
 4. **Restatement leakage**：历史财务数据优先采用当时版本。
-5. **Transaction costs**：至少允许配置佣金/点差/滑点的 bps 成本。
+5. **Transaction costs**：成本按实际组合换手率扣减，不再每期机械固定扣一次。
 6. **Data snooping**：反复调参后必须做样本外验证。
 
 ## 样本外纪律
@@ -38,19 +39,28 @@
 训练/设计期 → 验证期 → 样本外测试期
 ```
 
-当样本足够时优先使用 walk-forward，而不是一次性在全部历史上找最优参数。
+`scripts/backtest_factor_strategy.py` 支持 `train_end` / `validation_end` 分段，并单独报告 `out_of_sample` 指标。样本足够时优先使用 walk-forward；当前脚本仍是 baseline evaluator，不声称已实现完整机构级回测框架。
 
 ## 最小横截面回测
 
-`scripts/backtest_factor_strategy.py` 接收 point-in-time 数据：
+输入：
 
 ```text
 date,ticker,score,forward_return[,benchmark_return]
 ```
 
-每个日期按 score 选择 Top 分位/Top N，等权形成组合，再计算收益、Sharpe、最大回撤和基准超额收益。
+每个日期按 score 选择 Top 分位/Top N，等权形成组合。
 
-这里的 `forward_return` 必须由独立数据处理流程产生，不能由脚本在知道未来信息的基础上反向构造信号。
+交易成本按：
+
+```text
+one_way_turnover = 0.5 × Σ|new_weight - old_weight|
+transaction_cost = one_way_turnover × configured_cost_rate
+```
+
+首次从现金建仓按 100% one-way turnover 处理。若持仓完全不变，下期换手成本为 0。
+
+`forward_return` 必须由独立数据处理流程产生，不能由脚本在知道未来信息的基础上反向构造信号。
 
 ## 通过标准
 
