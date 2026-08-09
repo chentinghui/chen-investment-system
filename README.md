@@ -2,7 +2,7 @@
 
 当前版本：**0.4.5**
 
-CIS 是一个中文系统化股票研究控制层。它的核心职责是**分析**：组织证据、多角色研究、风险审查、评分、市场环境和交易计划。CIS 不自动下单，也不要求每次研究都运行量化、回测或历史绩效模块。
+CIS 是一个中文系统化股票研究控制层。它的核心职责是**分析**：组织证据、多角色研究、风险审查、评分、市场环境和交易计划。CIS 不自动下单，也不要求每次研究都运行量化、Alpha 挖掘、回测或历史绩效模块。
 
 ## CIS Core
 
@@ -32,9 +32,43 @@ US-equity Price/Session Baseline + Quote Freshness + Tactical R/R Gate（短线�
 
 日常单股分析只运行与当前问题相关的 Core 能力。外围研发工具不可用时，不阻塞 CIS Core。
 
+## Alpha Research Agent
+
+Alpha Discovery / Validation 独立放在：
+
+```text
+extensions/alpha_research/
+```
+
+第一版将 **WorldQuant BRAIN** 作为外部 Alpha 候选来源：
+
+```text
+WorldQuant BRAIN export / 合法 API JSON
+        ↓
+worldquant/alpha_import.py
+        ↓
+cis.alpha_candidate.v1
+        ↓
+worldquant/alpha_validator.py
+        ↓
+factor_engine / ml_research
+        ↓
+CIS Evidence / Risk / Portfolio Review
+```
+
+核心边界：
+
+- BRAIN 只负责提供 Alpha 候选，不负责 CIS 最终买卖裁决；
+- 不保存 BRAIN 密码/API key，不自动提交 Alpha，不连接 Broker 自动交易；
+- 所有输出固定 `decision_authority=none`、`research_status=unreviewed`；
+- 通过 Sharpe / Turnover / Fitness 等初筛只得到 `candidate_for_cis_validation`；
+- 仍需检查经济解释、前视/数据泄漏、样本外、换手/成本/容量、相关性/分散化；
+- Factor Engine 提供横截面 Rank IC / IC hit rate / Top-Bottom spread；
+- ML Research 只评估外部 prediction 的 train/validation/test，不在 CIS 内自动训练模型。
+
 ## 0.4.5 Contract & Security Hardening
 
-本版不新增 Agent，也不扩大日常分析链，重点修复接口、边界条件和供应链安全：
+0.4.5 基线继续保持接口、边界条件和供应链安全：
 
 - **Agent ↔ Score 契约统一**：Evidence 使用 `audit_status=unverified|pass|unresolved|fail`；Risk 使用 `risk_status=unverified|pass|unresolved|fail`、`risk_override=none|block`。`conditional/caution` 不再作为机器枚举。
 - **Quote Observation Session**：active quote 的 `quote_timestamp` 本身必须属于与分析一致的 session，盘前旧报价不能包装成 regular `live`。
@@ -47,6 +81,7 @@ US-equity Price/Session Baseline + Quote Freshness + Tactical R/R Gate（短线�
 - **Evaluation 样本纪律**：5D/20D/60D 不再混成总体相关性；样本门槛优先按 unique `research_id`，避免把多个 horizon 当作独立实验。
 - **Public Ledger allowlist**：Prediction/Evaluation 公共记录只允许固定结构化字段，任意 notes/account/shares/cost_basis 等未批准字段直接拒绝。
 - **Quant / Backtest 数据质量**：Quant 拒绝重复 ticker 和单点伪横截面；Backtest 拒绝重复 `(date,ticker)` 与不可能的低于 -100% return。
+- **Alpha Research 安全边界**：WorldQuant/BRAIN 候选不得携带 credential、brokerage 或 live-order 字段，任何 Alpha 初筛结果都没有最终动作权。
 
 ## Optional Research Tooling
 
@@ -168,4 +203,4 @@ us_nasdaq_v1 → QQQ + Nasdaq-100 breadth
 
 ## 风险声明
 
-CIS 用于研究组织、证据核验、筛选、回测和分析辅助，不构成收益承诺，也不连接 Broker 自动执行交易。模型、数据、因子和历史回测都可能失效，最终投资决定仍需独立判断。
+CIS 用于研究组织、证据核验、Alpha 研究、筛选、回测和分析辅助，不构成收益承诺，也不连接 Broker 自动执行交易。模型、数据、因子、Alpha 和历史回测都可能失效，最终投资决定仍需独立判断。
