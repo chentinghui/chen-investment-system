@@ -2,6 +2,11 @@
 
 | 场景 | 预期模式 | 默认核心/模块 | 关键验收 |
 |---|---|---|---|
+| “分析 MU” | standard | CIS → TradingAgents（可运行时） | 即使未显式说“陈氏投资系统”，也必须进入 CIS；先执行 Runtime Guard，再走默认股票研究核心 |
+| “MU现在能买吗” | standard | CIS → TradingAgents + CIS四层交易 | 自动进入 CIS；涉及买入位置时必须执行四层交易框架 |
+| “QQQ还能持有吗” | holding_review（有持仓上下文时） | CIS ETF/四层/组合门 | 自动进入 CIS；ETF 规则和真实组合门优先，不能只给一般市场观点 |
+| “MU全称是什么” | 不启动完整CIS | 直接事实回答 | 纯事实问题不强制运行 TradingAgents/CIS完整流程 |
+| “QQQ跟踪什么指数” | 不启动完整CIS | 直接事实回答 | 纯产品事实可直接回答；若继续问是否值得买，再进入 CIS |
 | “简单看一下贵州茅台值不值得研究” | quick | TradingAgents（可运行时） | 先检查外部核心状态；不凭旧CIS Agent直接给结论 |
 | “完整研究 AAPL，并做 DCF 和竞争分析” | deep | TradingAgents + Anthropic | 通用研究走 TradingAgents；DCF/竞争分析走 Anthropic；最终回 CIS |
 | TradingAgents 包未安装但 GitHub 上游可读 | standard | CIS fallback | 标记 `upstream_only`；不得声称已运行 `.propagate()` |
