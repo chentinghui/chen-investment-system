@@ -8,11 +8,22 @@
 4. 读取 `runtime/tradingagents/upstream-status.json`。TradingAgents 7 天 TTL 未到时使用稳定基线；到期后的下一次股票研究轻量检查上游 `main` SHA。新 SHA 标记 `review_required`，未经审查不得采用。
 5. 原版 TradingAgents 仅在用户明确要求运行/测试时启动；执行成功不等于研究质量通过。Secret-backed 远程运行要求当前 upstream SHA 已审查，第三方执行 Job 不拥有仓库写权限。
 6. 专业金融子问题按需路由 Anthropic Financial Services。
-7. Quant / Backtest / Prediction / Evaluation 不属于日常单股 Core，只有对应任务才从 `extensions/research_tooling/` 调用。
+7. Alpha 挖掘、WorldQuant BRAIN 候选导入或 Alpha 稳健性检查按需路由 `extensions/alpha_research/`。
+8. Quant / Backtest / Prediction / Evaluation 不属于日常单股 Core，只有对应任务才从 `extensions/research_tooling/` 调用。
 
 ## 1. Intake
 
 识别对象、问题、市场、模式、期限、`analysis_date/as_of`、基准和真实持仓资料，并确定 `decision_context`：`generic | long_term | tactical | earnings`。
+
+Alpha 研究额外识别：
+
+```text
+alpha_source: worldquant_brain | local | other
+alpha_id / expression
+region / universe / delay
+research_metrics
+sample / split / forward-return definition
+```
 
 短线/具体价位任务额外登记：
 
@@ -30,6 +41,8 @@ quote_session_date（closed / last_close）
 ## 2. Evidence
 
 登记来源等级、发布日期、资料期间、提取日期、事实、限制和冲突。历史任务必须防前视偏差。
+
+Alpha 研究必须额外登记 expression/settings/metrics 的来源，区分平台回测指标与 CIS 独立验证结果；不得把单个平台 Sharpe / Fitness 直接当成已验证 Alpha。
 
 短线任务执行 Evidence Freshness Guard：价格/成交/技术必须有明确数据截止时间，Breaking News / Catalyst 必须检查当前最新公开信息；新鲜度不清楚时 Evidence Audit 不得 `pass`。活跃时段 stale quote、分析 session 与 quote observation session 冲突、错误 last-close session 均不能通过 Price Context。
 
@@ -129,7 +142,40 @@ Tactical Setup Readiness / 当前交易计划状态
 
 避免把“好公司”直接等同于“现在值得买”。
 
-## 11. Optional Research Tooling
+## 11. Alpha Research Agent（按需）
+
+只有 Alpha 发现/验证任务才调用：
+
+```text
+extensions/alpha_research/
+```
+
+WorldQuant BRAIN 路径：
+
+```text
+BRAIN export / 合法 API JSON
+  ↓
+worldquant/alpha_import.py
+  ↓
+cis.alpha_candidate.v1
+  ↓
+worldquant/alpha_validator.py
+  ↓
+factor_engine/cross_section.py + factor_test.py
+  ↓
+ml_research/model_test.py（有外部 prediction 时）
+```
+
+研究门：
+
+- 所有结果 `decision_authority=none`；
+- BRAIN credential / password / API key / brokerage / live-order 字段不得进入候选契约；
+- `candidate_for_cis_validation` 不是买入信号，也不是 Alpha 已证实；
+- 必须做 economic rationale、look-ahead/data leakage、out-of-sample、turnover/cost/capacity、correlation/diversification review；
+- `model_test.py` 不训练模型，只诊断外部 prediction 的 train/validation/test，默认要求 test split；
+- Alpha Research 故障不得阻塞普通 CIS Core。
+
+## 12. Optional Research Tooling
 
 只有对应任务才调用：
 
@@ -145,7 +191,7 @@ extensions/research_tooling/
 
 这些外围工具不属于默认单股分析链，故障不得阻塞 CIS Core，也不得自动修改生产规则。
 
-## 12. 原版 TradingAgents 测试路径
+## 13. 原版 TradingAgents 测试路径
 
 只有用户明确要求时，才按 `tradingagents.md` 运行本地/远程原版程序。远程执行固定本次 upstream SHA；secret-backed 运行先确认该 SHA 已审查。结果仍只是 `external_decision_candidate`。
 
