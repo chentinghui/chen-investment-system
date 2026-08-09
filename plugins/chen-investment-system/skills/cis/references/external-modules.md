@@ -42,6 +42,33 @@ Anthropic `financial-services` 是 CIS 首选专业金融 Skill 上游，用于 
 
 只有本次真实读取/执行对应 Skill 且关键输入完整时，才能标记为已使用。输出必须回灌 CIS Evidence Gate。
 
+## WorldQuant BRAIN / Alpha Research Source
+
+WorldQuant BRAIN 在 CIS 中只定位为**外部 Alpha 候选来源**，不属于 CIS Core，也没有最终动作权。
+
+```text
+WorldQuant BRAIN export / 合法 API JSON
+        ↓
+extensions/alpha_research/worldquant/alpha_import.py
+        ↓
+cis.alpha_candidate.v1
+        ↓
+alpha_validator + factor/OOS diagnostics
+        ↓
+CIS Evidence / Risk / Portfolio Review
+```
+
+边界：
+
+- 第一版不在仓库保存 BRAIN 密码、API key 或 session credential；
+- 不自动提交/发布 Alpha；
+- 不自动连接 Broker 或发送 live order；
+- 导入结果固定 `source=worldquant_brain`、`research_status=unreviewed`、`decision_authority=none`；
+- BRAIN Sharpe / Turnover / Fitness 等指标通过只能进入 `candidate_for_cis_validation`；
+- 必须继续检查经济解释、数据泄漏/前视偏差、样本外、换手/成本/容量、相关性/分散化。
+
+BRAIN 暂时不可访问时，CIS 可继续用用户提供的合法导出结果或本地 Alpha 研究工具；Alpha Research 故障不得阻塞普通单股分析。
+
 ## Buffett / 其他可选方法
 
 任何外部投资方法都只能作为可选视角或证据增强，不得覆盖 CIS 的 Evidence、Risk、Score、Critical Dimension / Context Checks、Regime、Tactical Price/RR Gate、四层交易、ETF/QDII 和组合门。
@@ -63,4 +90,10 @@ Quant、Backtest、Prediction Ledger 和 Performance/Evaluation 是 CIS 仓库�
 extensions/research_tooling/
 ```
 
-它们不依赖外部 LLM，但也不属于日常单股 Core。只有筛选、规则验证、记录/复盘/校准任务才调用；其故障不得阻塞 CIS Core。Market Regime 与 Tactical Price/RR Gate 仍属于 CIS Core 的按需分析层。
+Alpha Discovery / Validation 是单独的可选研究层：
+
+```text
+extensions/alpha_research/
+```
+
+它们不依赖外部 LLM，但也不属于日常单股 Core。只有筛选、Alpha 研究、规则验证、记录/复盘/校准任务才调用；其故障不得阻塞 CIS Core。Market Regime 与 Tactical Price/RR Gate 仍属于 CIS Core 的按需分析层。
