@@ -1,4 +1,4 @@
-# CIS 0.4.3 模块登记表
+# CIS 0.4.4 模块登记表
 
 CIS 采用 **Core Analysis + Optional Research Tooling** 分层，避免把筛选、回测、记录和绩效系统塞进日常单股分析链。
 
@@ -11,10 +11,10 @@ CIS 采用 **Core Analysis + Optional Research Tooling** 分层，避免把筛�
 | Risk Review | 尾部风险、论点失效、集中度/流动性 | `fail_closed_gate` | **Core** | 质量门 |
 | Critical Dimension Gate | 按任务确保关键维度存在 | `installed` | **Core** | 质量门 |
 | Tactical Context Checks | Price Context + Catalyst/Event Review 完成检查 | `installed` | **Core, tactical** | 质量门 |
-| CIS Scoring | 八维加权 + coverage；短线仍保持质量分与交易赔率分离 | `production_heuristic_pending_calibration` | **Core** | 无单独动作权 |
-| Market Regime Layer | risk_on / neutral / risk_off 环境分类 + per-signal freshness | `experimental` | **Core, 按需** | 无 |
-| Price / Session Guard | 防止 last_close/盘前/盘后/实时价格语义混淆 | `installed` | **Core, tactical** | 质量门 |
-| Tactical R/R Gate | Entry/Stop/Target/Chase Limit/RR 几何检查 | `installed_baseline` | **Core, tactical** | 质量门 |
+| CIS Scoring | 八维加权 + coverage；短线仍保持 Research Grade 与交易赔率分离 | `production_heuristic_pending_calibration` | **Core** | 无单独动作权 |
+| Market Regime Layer | profile化 risk_on / neutral / risk_off + fresh-signal filtering | `experimental` | **Core, 按需** | 无 |
+| Price / Session Guard | XNAS/XNYS 时段推导、quote freshness、last-close session 校验 | `installed` | **Core, tactical** | 质量门 |
+| Tactical R/R Gate | Entry/Stop Type/Target/Chase Limit/RR + Setup Lifecycle | `installed_baseline` | **Core, tactical** | 质量门 |
 | Trading Framework | 趋势→价格→成交→风险；止盈+止损 | `installed` | **Core** | 质量门 |
 | ETF / QDII Gate | 产品身份、溢价、申赎、时差、流动性 | `installed` | **Core** | 质量门 |
 | Portfolio Gate | 成本、权重、集中度、约束、资金需求 | `installed` | **Core, 按需** | 质量门 |
@@ -33,7 +33,7 @@ extensions/research_tooling/
 ## 路由边界
 
 - 日常单股分析：只要求 Core；
-- 短线/具体买点：Core 内增加 Price/Session Guard + Tactical R/R Gate；
+- 短线/具体买点：Core 内增加 Exchange-aware Price/Session Guard + Quote Freshness + Tactical R/R Gate；
 - 大股票池/Top N：按需启用 Quant Extension；
 - 规则有效性验证：按需启用 Backtest Extension；
 - 用户明确要求记录、复盘或校准：按需启用 Prediction/Evaluation Extension；
