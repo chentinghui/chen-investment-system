@@ -24,6 +24,9 @@ env:
   # Pin the engine build for reproducibility. Update deliberately after review.
   LEAN_IMAGE: quantconnect/lean:17948
   QQQ_DATA_CACHE_KEY: qqq-adjusted-daily-v1-2026-08-07
+  # The QQQ smoke algorithm itself completes in seconds. This guard applies only
+  # after the image is ready, so a registry pull is not counted against it.
+  LEAN_ENGINE_TIMEOUT_SECONDS: "180"
 
 jobs:
   lean-engine-backtest:
@@ -47,6 +50,7 @@ jobs:
           docker version
           echo "runner_arch=$(uname -m)"
           echo "lean_image=$LEAN_IMAGE"
+          echo "engine_timeout_seconds=$LEAN_ENGINE_TIMEOUT_SECONDS"
 
       - name: Test strict crossover logic
         run: |
@@ -91,7 +95,7 @@ jobs:
               url = f"https://{host}/v8/finance/chart/QQQ?{params}"
               for attempt in range(3):
                   try:
-                      request = urllib.request.Request(url, headers={"User-Agent": "CIS-LEAN-Engine-Test/1.1"})
+                      request = urllib.request.Request(url, headers={"User-Agent": "CIS-LEAN-Engine-Test/1.2"})
                       with urllib.request.urlopen(request, timeout=30) as response:
                           payload = json.load(response)["chart"]["result"][0]
                       break
@@ -146,8 +150,7 @@ jobs:
           import urllib.request
           from pathlib import Path
 
-          # This file is small; the expensive dependency is the LEAN image.
-          # Keep using the official config as the compatibility baseline.
+          # Keep the official launcher configuration as the compatibility base.
           url = "https://raw.githubusercontent.com/QuantConnect/Lean/master/Launcher/config.json"
           with urllib.request.urlopen(url, timeout=30) as response:
               config = json5.loads(response.read().decode("utf-8"))
@@ -184,23 +187,101 @@ jobs:
           fi
           docker image inspect "$LEAN_IMAGE" --format 'image={{.RepoTags}} size={{.Size}} id={{.Id}}'
 
-      - name: Run actual QuantConnect LEAN engine
+      - name: Run actual QuantConnect LEAN engine with completion guard
         shell: bash
         run: |
-          docker run --rm \
+          set -euo pipefail
+          CONTAINER_NAME="cis-lean-qqq-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          SUMMARY_PATTERN='.tmp_lean/results/*-summary.json'
+          rm -f .tmp_lean/lean.log
+
+          cleanup() {
+            docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name "$CONTAINER_NAME" \
             -v "$PWD/integrations/lean/strategies/qqq_sma20_50:/Lean/Algorithm.Python/CIS_QQQ_SMOKE:ro" \
             -v "$PWD/.tmp_lean/data/custom:/Lean/Data/custom:ro" \
             -v "$PWD/.tmp_lean/results:/Lean/Results" \
             -v "$PWD/.tmp_lean/config.json:/Lean/Launcher/bin/Debug/config.json:ro" \
             "$LEAN_IMAGE" \
-            --results-destination-folder /Lean/Results | tee .tmp_lean/lean.log
+            --results-destination-folder /Lean/Results >/dev/null
+
+          started_at=$(date +%s)
+          engine_completed=false
+          timed_out=false
+
+          while true; do
+            docker logs "$CONTAINER_NAME" > .tmp_lean/lean.log 2>&1 || true
+            running=$(docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || echo false)
+
+            if grep -q 'completed in .*Processing total of' .tmp_lean/lean.log && compgen -G "$SUMMARY_PATTERN" >/dev/null; then
+              # LEAN can leave background threads alive after the algorithm and
+              # result writer have finished. Give the summary file a short flush
+              # window, then stop only the residual container process.
+              sleep 3
+              docker logs "$CONTAINER_NAME" > .tmp_lean/lean.log 2>&1 || true
+              if grep -q 'completed in .*Processing total of' .tmp_lean/lean.log && compgen -G "$SUMMARY_PATTERN" >/dev/null; then
+                engine_completed=true
+                echo "LEAN algorithm completion and summary JSON detected."
+                if [ "$running" = "true" ]; then
+                  echo "Stopping residual LEAN container after completed result flush."
+                  docker stop -t 2 "$CONTAINER_NAME" >/dev/null || true
+                fi
+                break
+              fi
+            fi
+
+            if [ "$running" != "true" ]; then
+              break
+            fi
+
+            now=$(date +%s)
+            if [ $((now - started_at)) -ge "$LEAN_ENGINE_TIMEOUT_SECONDS" ]; then
+              timed_out=true
+              echo "LEAN engine exceeded ${LEAN_ENGINE_TIMEOUT_SECONDS}s after container start."
+              docker kill "$CONTAINER_NAME" >/dev/null || true
+              break
+            fi
+            sleep 1
+          done
+
+          docker logs "$CONTAINER_NAME" > .tmp_lean/lean.log 2>&1 || true
+          cat .tmp_lean/lean.log
+          exit_code=$(docker inspect -f '{{.State.ExitCode}}' "$CONTAINER_NAME" 2>/dev/null || echo 125)
+          summary=$(find .tmp_lean/results -maxdepth 1 -type f -name '*-summary.json' -print -quit)
+
+          if [ "$engine_completed" = "true" ] && [ -n "$summary" ]; then
+            echo "LEAN_ENGINE_RESULT_READY=true" >> "$GITHUB_ENV"
+            echo "LEAN_CONTAINER_EXIT_CODE=$exit_code" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          if [ "$timed_out" = "true" ]; then
+            echo "LEAN did not produce a completed summary before timeout."
+            exit 124
+          fi
+
+          if [ "$exit_code" -ne 0 ]; then
+            echo "LEAN container exited before producing a completed summary: $exit_code"
+            exit "$exit_code"
+          fi
+
+          if [ -z "$summary" ]; then
+            echo "LEAN container exited cleanly but no summary JSON was produced."
+            exit 1
+          fi
+
+          echo "LEAN_ENGINE_RESULT_READY=true" >> "$GITHUB_ENV"
+          echo "LEAN_CONTAINER_EXIT_CODE=$exit_code" >> "$GITHUB_ENV"
 
       - name: Parse LEAN result through CIS adapter
         shell: bash
         run: |
-          RESULT=$(find .tmp_lean/results -type f -name '*.json' ! -name '*order-events.json' | head -n 1)
+          RESULT=$(find .tmp_lean/results -type f -name '*-summary.json' | head -n 1)
           if [ -z "$RESULT" ]; then
-            echo "No LEAN result JSON found"
+            echo "No LEAN summary JSON found"
             find .tmp_lean/results -maxdepth 2 -type f -print || true
             exit 1
           fi
