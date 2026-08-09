@@ -46,7 +46,7 @@ class ScoreCISTests(unittest.TestCase):
         self.assertIn("valuation", result.missing_critical_dimensions)
         self.assertIn("critical_dimensions_missing", result.blocked_reasons)
 
-    def test_tactical_context_requires_technical_and_risk(self) -> None:
+    def test_tactical_context_still_obeys_global_coverage_gate(self) -> None:
         scores = dict(FULL_80)
         scores.pop("fundamentals")
         scores.pop("valuation")
@@ -56,7 +56,9 @@ class ScoreCISTests(unittest.TestCase):
             risk_status="pass",
             decision_context="tactical",
         )
-        self.assertEqual(result.grade, "provisional")  # coverage is below 85 despite criticals being present
+        self.assertEqual(result.coverage_pct, 65.0)
+        self.assertEqual(result.grade, "insufficient")
+        self.assertIsNone(result.score)
         self.assertEqual(result.missing_critical_dimensions, ())
 
     def test_risk_block_prevents_decision_grade(self) -> None:
