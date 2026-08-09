@@ -9,7 +9,7 @@ from typing import Any
 
 from prediction_ledger import DEFAULT_HORIZONS_TRADING_DAYS, DEFAULT_LEDGER, record_prediction
 
-CIS_VERSION = "0.4.3"
+CIS_VERSION = "0.4.4"
 
 
 def make_research_id(ticker: str, as_of: str) -> str:
