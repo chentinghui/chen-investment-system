@@ -42,7 +42,7 @@ def fetch_yahoo_daily(symbol: str, start: date, end: date) -> list[DailyBar]:
     )
     request = urllib.request.Request(
         f"{YAHOO_CHART.format(symbol=encoded)}?{params}",
-        headers={"User-Agent": "chen-investment-system/0.4.2-research-tooling"},
+        headers={"User-Agent": "chen-investment-system/0.4.3-research-tooling"},
     )
     with urllib.request.urlopen(request, timeout=20) as response:
         payload = json.load(response)
@@ -77,16 +77,18 @@ def fetch_yahoo_daily(symbol: str, start: date, end: date) -> list[DailyBar]:
     return bars
 
 
-def _entry_index(bars: list[DailyBar], as_of: date) -> int | None:
-    eligible = [index for index, bar in enumerate(bars) if bar.session_date <= as_of]
-    if eligible:
-        return eligible[-1]
-    return 0 if bars else None
+def _first_index_after(bars: list[DailyBar], as_of: date) -> int | None:
+    for index, bar in enumerate(bars):
+        if bar.session_date > as_of:
+            return index
+    return None
 
 
-def _bar_on_or_before(bars: list[DailyBar], target: date) -> DailyBar | None:
-    eligible = [bar for bar in bars if bar.session_date <= target]
-    return eligible[-1] if eligible else None
+def _bar_on_date(bars: list[DailyBar], target: date) -> DailyBar | None:
+    for bar in bars:
+        if bar.session_date == target:
+            return bar
+    return None
 
 
 def path_metrics(path: list[float]) -> dict[str, float]:
@@ -108,11 +110,13 @@ def path_metrics(path: list[float]) -> dict[str, float]:
     }
 
 
-def _benchmark_return(bars: list[DailyBar], start: date, end: date) -> tuple[float, DailyBar, DailyBar]:
-    entry = _bar_on_or_before(bars, start)
-    exit_bar = _bar_on_or_before(bars, end)
-    if entry is None or exit_bar is None or exit_bar.session_date < entry.session_date:
-        raise ValueError("benchmark does not cover the evaluation window")
+def _benchmark_return_exact(
+    bars: list[DailyBar], start: date, end: date
+) -> tuple[float, DailyBar, DailyBar]:
+    entry = _bar_on_date(bars, start)
+    exit_bar = _bar_on_date(bars, end)
+    if entry is None or exit_bar is None:
+        raise ValueError("benchmark does not exactly cover the evaluation sessions")
     return exit_bar.adjusted_close / entry.adjusted_close - 1, entry, exit_bar
 
 
@@ -133,29 +137,50 @@ def settle_prediction(
         return [], []
 
     start = as_of - timedelta(days=15)
-    stock_bars = fetcher(str(prediction["ticker"]), start, today)
-    entry_index = _entry_index(stock_bars, as_of)
-    if entry_index is None:
-        return [], [f"{research_id}: no entry session"]
-
     benchmark_symbol = str(prediction["benchmark"])
     benchmark_bars = fetcher(benchmark_symbol, start, today)
+    calendar_entry_index = _first_index_after(benchmark_bars, as_of)
+    if calendar_entry_index is None:
+        return [], [f"{research_id}: benchmark has no next session after research date"]
+
+    entry_session = benchmark_bars[calendar_entry_index].session_date
+    stock_bars = fetcher(str(prediction["ticker"]), start, today)
+    entry_bar = _bar_on_date(stock_bars, entry_session)
+    if entry_bar is None:
+        return [], [f"{research_id}: no executable stock price on next benchmark session {entry_session}"]
+
     sector_symbol = str(prediction.get("sector_benchmark") or "").strip()
     sector_bars = fetcher(sector_symbol, start, today) if sector_symbol else []
 
     outcomes: list[dict[str, Any]] = []
     warnings: list[str] = []
     for horizon in pending:
-        target_index = entry_index + horizon
-        if target_index >= len(stock_bars):
+        target_index = calendar_entry_index + horizon
+        if target_index >= len(benchmark_bars):
             continue
-        path_bars = stock_bars[entry_index : target_index + 1]
-        entry_bar = path_bars[0]
-        exit_bar = path_bars[-1]
+        exit_session = benchmark_bars[target_index].session_date
+        if exit_session > today:
+            continue
+
+        exit_bar = _bar_on_date(stock_bars, exit_session)
+        if exit_bar is None:
+            warnings.append(
+                f"{research_id}/{horizon}: no stock price on target benchmark session {exit_session}; left unresolved"
+            )
+            continue
+
+        path_bars = [
+            bar for bar in stock_bars
+            if entry_session <= bar.session_date <= exit_session
+        ]
+        if not path_bars or path_bars[0].session_date != entry_session or path_bars[-1].session_date != exit_session:
+            warnings.append(f"{research_id}/{horizon}: incomplete stock path")
+            continue
         metrics = path_metrics([bar.adjusted_close for bar in path_bars])
+
         try:
-            benchmark_return, benchmark_entry, benchmark_exit = _benchmark_return(
-                benchmark_bars, entry_bar.session_date, exit_bar.session_date
+            benchmark_return, benchmark_entry, benchmark_exit = _benchmark_return_exact(
+                benchmark_bars, entry_session, exit_session
             )
         except ValueError as exc:
             warnings.append(f"{research_id}/{horizon}: {exc}")
@@ -164,18 +189,26 @@ def settle_prediction(
         sector_return: float | None = None
         if sector_bars:
             try:
-                sector_return, _, _ = _benchmark_return(
-                    sector_bars, entry_bar.session_date, exit_bar.session_date
+                sector_return, _, _ = _benchmark_return_exact(
+                    sector_bars, entry_session, exit_session
                 )
             except ValueError as exc:
                 warnings.append(f"{research_id}/{horizon}: sector benchmark: {exc}")
 
+        expected_session_count = horizon + 1
+        if len(path_bars) < expected_session_count:
+            warnings.append(
+                f"{research_id}/{horizon}: stock path has {len(path_bars)} observed sessions vs "
+                f"{expected_session_count} benchmark sessions; path metrics may miss halted sessions"
+            )
+
         outcome: dict[str, Any] = {
             "research_id": research_id,
             "horizon_trading_days": horizon,
-            "evaluation_as_of": exit_bar.session_date.isoformat(),
-            "entry_session_date": entry_bar.session_date.isoformat(),
-            "exit_session_date": exit_bar.session_date.isoformat(),
+            "horizon_calendar_basis": f"benchmark_sessions:{benchmark_symbol}",
+            "evaluation_as_of": exit_session.isoformat(),
+            "entry_session_date": entry_session.isoformat(),
+            "exit_session_date": exit_session.isoformat(),
             "entry_price": entry_bar.adjusted_close,
             "exit_price": exit_bar.adjusted_close,
             "realized_return": metrics["realized_return"],
@@ -185,6 +218,7 @@ def settle_prediction(
             "max_favorable_excursion": metrics["max_favorable_excursion"],
             "max_adverse_excursion": metrics["max_adverse_excursion"],
             "max_drawdown_during_horizon": metrics["max_drawdown_during_horizon"],
+            "path_metric_basis": "adjusted_close_only",
             "falsifier_triggered": None,
             "falsifier_status": "not_evaluated_automatically",
             "market_data_source": "Yahoo Finance chart API (best-effort, unauthenticated)",
