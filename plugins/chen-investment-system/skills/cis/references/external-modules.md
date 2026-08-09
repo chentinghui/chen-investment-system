@@ -42,6 +42,34 @@ Anthropic `financial-services` 是 CIS 首选专业金融 Skill 上游，用于 
 
 只有本次真实读取/执行对应 Skill 且关键输入完整时，才能标记为已使用。输出必须回灌 CIS Evidence Gate。
 
+## QuantConnect LEAN
+
+- 上游：`QuantConnect/Lean`，作为 CIS **外部量化验证/回测引擎**；
+- CIS 不 vendor、不复制 LEAN 源码，不使用 git submodule；
+- CIS 只维护 `integrations/lean/cis_lean_adapter.py` 和 `references/quantconnect-lean.md`；
+- 需要事件驱动策略、订单、费用、持仓路径、股票/ETF/期权等策略级回测时优先 LEAN；
+- `extensions/research_tooling/backtest_factor_strategy.py` 继续保留为轻量横截面 baseline evaluator；
+- 普通单股分析不自动运行 LEAN；
+- 当前集成只做本地 backtest 调用与结果 JSON 解析，不启用 live trading / Broker 自动执行。
+
+### LEAN 运行状态分层
+
+```text
+execution_status = success | error | invalid_input | unavailable
+runtime_readiness = ready | lean_cli_missing | docker_missing | unavailable
+research_quality = unreviewed
+engine_role = external_quant_validation
+decision_authority = none
+```
+
+只有本次真实调用适配器并且 `execution_status=success`、找到可识别的 statistics JSON，才能说“LEAN 回测已运行”。`runtime_readiness=ready` 只说明基础环境存在，不证明 QuantConnect 账户、数据、项目或策略已经可执行。
+
+LEAN 的 CAGR、Drawdown、Sharpe、Win Rate 等结果只是历史策略证据。它不自动消除 look-ahead bias、survivorship bias、universe drift、restatement leakage、过拟合或不现实的成交/费用假设。所有成功结果仍必须经过 `backtest-validation.md`，未经审查保持 `research_quality=unreviewed`。
+
+Lean CLI、Docker、账户、数据或项目不可用时，普通 CIS Core 必须继续运行；如果用户明确要求“用 LEAN 回测”，则必须明确报告 unavailable/error，不能用 baseline evaluator 冒充 LEAN。
+
+截至 2026-08-09，官方 Lean CLI 本地运行路径使用 Docker，官方文档当前要求付费组织层级。CIS 不保存 QuantConnect/Broker Secret，也不负责登录、组织 workspace 或数据授权。
+
 ## Buffett / 其他可选方法
 
 任何外部投资方法都只能作为可选视角或证据增强，不得覆盖 CIS 的 Evidence、Risk、Score、Critical Dimension / Context Checks、Regime、Tactical Price/RR Gate、四层交易、ETF/QDII 和组合门。
@@ -57,10 +85,10 @@ Anthropic `financial-services` 是 CIS 首选专业金融 Skill 上游，用于 
 
 ## Optional Research Tooling
 
-Quant、Backtest、Prediction Ledger 和 Performance/Evaluation 是 CIS 仓库中的**可选外围研发工具**，统一位于：
+Quant、Baseline Backtest、Prediction Ledger 和 Performance/Evaluation 是 CIS 仓库中的**可选外围研发工具**，统一位于：
 
 ```text
 extensions/research_tooling/
 ```
 
-它们不依赖外部 LLM，但也不属于日常单股 Core。只有筛选、规则验证、记录/复盘/校准任务才调用；其故障不得阻塞 CIS Core。Market Regime 与 Tactical Price/RR Gate 仍属于 CIS Core 的按需分析层。
+它们不依赖外部 LLM，但也不属于日常单股 Core。只有筛选、轻量横截面规则验证、记录/复盘/校准任务才调用；其故障不得阻塞 CIS Core。需要更完整的可执行策略回测时，优先走外部 QuantConnect LEAN。Market Regime 与 Tactical Price/RR Gate 仍属于 CIS Core 的按需分析层。

@@ -9,7 +9,8 @@ CIS 是唯一用户入口和最终质量控制层，但**不是所有工具都�
 - 大股票池筛选：按需调用 `extensions/research_tooling/quant_factor_engine.py`；
 - 专业估值/财报/模型：按需调用 Anthropic Financial Services；
 - 当前市场环境显著影响交易计划：加 Market Regime；
-- 新规则/因子需要证明有效：按需调用 Backtest Extension；
+- 可执行策略/技术规则/仓位规则需要历史验证：首选外部 **QuantConnect LEAN**；
+- 仅 `date,ticker,score,forward_return` 横截面因子 sanity check：可调用 baseline `backtest_factor_strategy.py`；
 - 用户明确要求历史记录/复盘/校准：按需调用 Prediction/Evaluation Extension；
 - 原版 TradingAgents Python：仅用户明确要求运行/测试时调用。
 
@@ -25,12 +26,33 @@ CIS 是唯一用户入口和最终质量控制层，但**不是所有工具都�
 | 短线买入/做差价 | ChatGPT-native Methodology + Session/Freshness + Tactical R/R | Regime（按需） | Tactical Context Checks + 四层交易 |
 | 买入/卖出/持有 | ChatGPT-native Methodology | Regime（按需） | Critical Dimensions + 四层交易 + Portfolio Gate |
 | 大股票池 Top N | CIS 受理 | **Quant Extension** | 候选再回到 CIS Core 深研 |
-| 量化规则是否有效 | CIS 受理 | **Backtest Extension** | 不自动改生产规则 |
+| 可执行量化/技术策略是否有效 | CIS 受理 | **QuantConnect LEAN** | Backtest Validation；不自动改生产规则 |
+| 横截面因子/Top-N sanity check | CIS 受理 | **Baseline Backtest Extension** | 不冒充完整策略回测 |
 | 当前市场环境 | Market Regime | 宏观证据 | 不直接触发买卖 |
 | ETF / QDII | CIS ETF 模块 | 可验证产品数据 | ETF/QDII专属纪律 |
 | 组合再平衡 | 单标的研究 + Regime | Portfolio Gate | 真实组合数据门 |
 | 历史复盘/评分校准 | CIS 受理 | **Prediction/Evaluation Extension** | horizon 分离 + 独立样本纪律 |
 | 运行原版 TradingAgents | 原版 local/remote | A/B 验证 | external_decision_candidate 仅作输入 |
+
+## QuantConnect LEAN 路由
+
+LEAN 是 CIS 的**外部量化验证引擎**，适配层：
+
+```text
+integrations/lean/cis_lean_adapter.py
+```
+
+规则：
+
+- 普通单股研究不自动运行 LEAN；
+- 用户明确要求回测，或某条规则准备升级为默认规则时，读取 `references/quantconnect-lean.md` 与 `references/backtest-validation.md`；
+- 需要事件驱动订单/费用/持仓路径的策略验证，优先 LEAN；
+- 仅横截面 `score → forward_return` 研究，可使用 baseline evaluator；
+- 默认不同时运行 LEAN + baseline evaluator，除非 A/B 校验或排查冲突；
+- `runtime_readiness=ready` 不等于回测已运行；只有本次 `execution_status=success` 且解析到 statistics JSON 才能声称“已运行 LEAN”；
+- 任何 LEAN 结果初始 `research_quality=unreviewed`，必须通过 Backtest Validation；
+- LEAN 没有最终动作权，不自动修改评分权重，不自动连接 Broker，不启用 live trading；
+- Lean CLI / Docker / 账户 / 数据故障不得阻塞普通 CIS Core。
 
 ## Critical Dimension / Context Check 路由
 
@@ -105,11 +127,12 @@ extensions/research_tooling/
 路由规则：
 
 - Quant：只有股票池规模足够大、明确要求排名/筛选/Top N 时运行；横截面必须同一 `as_of`、ticker 唯一，因子必须有最小横截面有效观测；
-- Backtest：任何准备升级成默认规则的因子/阈值/权重才运行；同一 period 的 ticker 必须唯一；
+- Baseline Backtest：只用于轻量 `date,ticker,score,forward_return` 横截面验证；同一 period 的 ticker 必须唯一；
+- 完整策略 Backtest：优先外部 LEAN，不把 baseline evaluator 宣称为 LEAN 或机构级执行回测；
 - Prediction/Evaluation：只有用户明确要求记录、复盘或校准时运行；默认观察周期为 5/20/60 交易日；公开 Ledger 只接受 allowlist 字段；
 - Evaluation 的相关性按 horizon 分开，5D/20D/60D 不得混成一个总体相关性；样本门槛优先按 unique `research_id`；
 - 单股分析不得因为这些文件存在而自动运行；
-- Extension 故障不得阻塞 CIS Core。
+- External/Extension 故障不得阻塞 CIS Core。
 
 ## Market Regime 路由
 
@@ -152,5 +175,6 @@ us_nasdaq_v1 → QQQ + Nasdaq-100 breadth
 - Quant 只筛选，不重复做最终公司研究；
 - Anthropic 只负责专业子问题，不拥有最终动作权；
 - Market Regime 不重复技术分析，只提供环境层；
-- Backtest/Evaluation 只验证和复盘，不自动修改生产规则；
-- 最终顺序固定为：证据 → 多角色研究 → 专业增强 → Evidence/Risk → Critical Dimensions/Context Checks → CIS Score → Regime（按需）→ Tactical/Four-layer/ETF/组合门 → 最终中文结论。
+- LEAN 负责策略级历史验证，不重复基本面/新闻研究，不拥有最终动作权；
+- Baseline Backtest/Evaluation 只验证和复盘，不自动修改生产规则；
+- 最终顺序固定为：证据 → 多角色研究 → 专业增强 → Evidence/Risk → Critical Dimensions/Context Checks → CIS Score → Regime（按需）→ Tactical/Four-layer/ETF/组合门 → 最终中文结论；量化回测作为按需验证证据回灌，不是每次单股分析的固定步骤。

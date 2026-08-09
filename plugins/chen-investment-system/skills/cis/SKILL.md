@@ -1,6 +1,6 @@
 ---
 name: cis
-description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一用户入口。股票/上市公司/ETF分析、估值、买卖、持仓、财报、风险、目标价、买入价、卖出价和跨标的比较默认进入 CIS。日常单股研究由 CIS Core 完成；Quant、Backtest、Prediction/Evaluation 仅作为按需外围工具，不属于默认分析链。
+description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一用户入口。股票/上市公司/ETF分析、估值、买卖、持仓、财报、风险、目标价、买入价、卖出价和跨标的比较默认进入 CIS。日常单股研究由 CIS Core 完成；Quant、QuantConnect LEAN Backtest、Prediction/Evaluation 仅作为按需外围/外部能力，不属于默认分析链。
 ---
 
 # 陈氏投资系统（CIS）0.4.5
@@ -33,21 +33,31 @@ Trade / ETF / Portfolio Gate
 最终中文分析结论
 ```
 
-日常研究不要求外部 LLM API，也不要求运行原版 TradingAgents Python。
+日常研究不要求外部 LLM API，也不要求运行原版 TradingAgents Python，更不要求运行 QuantConnect LEAN。
 
-## Optional Research Tooling
+## External Quant Validation + Optional Research Tooling
 
-外围工具统一位于：
+策略级量化验证使用外部 QuantConnect LEAN：
+
+```text
+integrations/lean/
+```
+
+- **LEAN**：仅在可执行交易策略、技术规则、仓位规则或期权/ETF/股票策略需要历史验证时按需调用；
+- LEAN 是外部量化验证引擎，不属于 CIS Core，不 vendor 源码，不启用默认 live trading；
+- LEAN 结果没有最终动作权，必须经过 `references/backtest-validation.md`。
+
+仓库内外围工具统一位于：
 
 ```text
 extensions/research_tooling/
 ```
 
 - Quant：仅大股票池/Top N/系统筛选时按需调用；
-- Backtest：仅验证新规则、因子、阈值或权重时调用；
+- Baseline Backtest：仅 `date,ticker,score,forward_return` 横截面因子/Top-N sanity check；
 - Prediction / Evaluation：仅用户明确要求记录、复盘或校准时调用；
-- 外围工具故障不得阻塞日常单股分析；
-- 外围工具没有最终动作权，也不得自动改写生产评分规则。
+- External/外围工具故障不得阻塞日常单股分析；
+- 外部/外围工具没有最终动作权，也不得自动改写生产评分规则。
 
 ## 自动触发规则
 
@@ -57,7 +67,8 @@ extensions/research_tooling/
 - 合理买入价、目标价、止盈、止损、估值、上涨空间、风险、财报影响；
 - 持仓复盘、加减仓、退出；
 - 多股票/ETF比较；
-- 大股票池 Top N 任务仍由 CIS 受理，但按需路由 Optional Quant。
+- 大股票池 Top N 任务仍由 CIS 受理，但按需路由 Optional Quant；
+- 明确要求“历史回测/验证策略是否有效”仍由 CIS 受理，但策略级验证优先路由外部 QuantConnect LEAN。
 
 纯事实问题如公司全称、代码、交易时间、上市地点，不强制运行完整 CIS。
 
@@ -71,7 +82,7 @@ extensions/research_tooling/
 6. 原版 TradingAgents 的 `execution_status=success` / `runtime_readiness=remote_ready` 只表示程序完成；`research_quality` 未审查时不能直接作为最终结论。
 7. 当前市场环境会显著影响交易计划时读取 `references/market-regime.md`；必须选择 `regime_profile`，missing/stale 信号先排除，再按 fresh coverage 判断是否能分类。
 8. 专业金融任务按需读取 `references/anthropic-financial-services.md`；只有本次真实可访问时才能声称实际运行。
-9. 大股票池筛选、规则回测或历史校准时，才读取对应 references 并路由 `extensions/research_tooling/`。
+9. 大股票池筛选或历史校准时，才读取对应 references 并路由 `extensions/research_tooling/`。**策略级规则回测**读取 `references/quantconnect-lean.md` + `references/backtest-validation.md` 并路由 `integrations/lean/cis_lean_adapter.py`；仅横截面因子 sanity check 才使用 baseline `backtest_factor_strategy.py`。
 10. 对短线/价位问题必须读取 `references/evidence-confidence.md` 与 `references/four-layer-trading-framework.md`，执行 Price/Session Guard、Quote Freshness Guard 与 Tactical R/R Gate。
 11. 所有外部/外围结果必须回到 CIS 最终质量门。
 
@@ -93,7 +104,8 @@ extensions/research_tooling/
 
 - `references/tradingagents.md`（仅原版运行/测试/上游审查）
 - `references/quant-engine.md`（仅筛选任务）
-- `references/backtest-validation.md`（仅规则验证）
+- `references/quantconnect-lean.md`（仅策略级量化验证/LEAN回测）
+- `references/backtest-validation.md`（仅规则/策略验证）
 - `references/performance-loop.md`（仅记录/复盘/校准）
 - `references/market-regime.md`
 - `references/evidence-confidence.md`
@@ -148,6 +160,26 @@ SHA 变化 → review_required → 继续使用稳定基线
 ### Anthropic Financial Services
 
 DCF / Comps / Earnings / 三表 / 模型审计 / Competitive / Thesis / Catalyst 等专业子问题按需优先读取上游 `main` 对应 Skill。只有本次真实读取/执行后才能标记已使用，输出仍需回到 CIS Evidence/Risk/Score。
+
+### QuantConnect LEAN
+
+```text
+普通单股研究 → 不运行 LEAN
+策略级回测 → readiness → lean backtest → result JSON → Backtest Validation
+横截面因子 sanity check → baseline evaluator
+```
+
+LEAN 独立安装和升级，CIS 不复制上游源码。只有本次真实 `execution_status=success` 且解析到可识别 statistics JSON，才能说“已运行 LEAN 回测”。`runtime_readiness=ready` 只表示 Lean CLI / Docker 基础环境可用，不代表账户、数据或项目已经可运行。
+
+LEAN 回测输出固定视为：
+
+```text
+engine_role = external_quant_validation
+decision_authority = none
+research_quality = unreviewed
+```
+
+通过样本外、偏差、费用/滑点、执行真实性与稳健性审查前，不得升级生产规则。当前 CIS 不启用 LEAN live trading / Broker 自动执行。
 
 ## Fail-Closed Evidence / Risk + Critical Dimension Gate
 
