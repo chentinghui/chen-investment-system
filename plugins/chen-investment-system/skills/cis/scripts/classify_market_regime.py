@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,19 @@ SIGNAL_WEIGHTS = {
     "credit_spread_change_bps_3m": 1.0,
 }
 TOTAL_WEIGHT = sum(SIGNAL_WEIGHTS.values())
+
+# Calendar-day tolerance is deliberately conservative and only a freshness guard,
+# not a forecasting parameter. Market/volatility signals should be near the same
+# session; credit series are allowed a wider publication lag.
+MAX_SIGNAL_AGE_DAYS = {
+    "index_above_sma200": 4,
+    "sma50_slope_pct": 4,
+    "breadth_above_sma200_pct": 4,
+    "vix": 4,
+    "realized_vol_20d": 4,
+    "high_yield_oas_bps": 14,
+    "credit_spread_change_bps_3m": 14,
+}
 
 
 def as_float(value: Any, label: str) -> float | None:
@@ -39,20 +53,53 @@ def strict_bool(value: Any, label: str) -> bool | None:
     return value
 
 
+def _iso_date(value: Any, label: str) -> date:
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError as exc:
+        raise ValueError(f"{label} must be YYYY-MM-DD") from exc
+
+
 def classify(payload: dict[str, Any]) -> dict[str, Any]:
     if not payload.get("as_of"):
         raise ValueError("as_of is required")
+    overall_as_of = _iso_date(payload.get("as_of"), "as_of")
+    raw_signal_as_of = payload.get("signal_as_of") or {}
+    if not isinstance(raw_signal_as_of, dict):
+        raise ValueError("signal_as_of must be an object mapping signal names to YYYY-MM-DD")
 
     weighted_score = 0.0
     used_weight = 0.0
-    used: dict[str, dict[str, float | int]] = {}
+    used: dict[str, dict[str, float | int | str]] = {}
+    missing_signal_dates: list[str] = []
+    stale_signals: list[str] = []
 
     def add_signal(name: str, signal: int) -> None:
         nonlocal weighted_score, used_weight
         weight = SIGNAL_WEIGHTS[name]
         weighted_score += signal * weight
         used_weight += weight
-        used[name] = {"signal": signal, "weight": weight}
+
+        signal_date_raw = raw_signal_as_of.get(name)
+        if signal_date_raw in (None, ""):
+            missing_signal_dates.append(name)
+            signal_date_text = "missing"
+            age_days: int | str = "unknown"
+        else:
+            signal_date = _iso_date(signal_date_raw, f"signal_as_of.{name}")
+            if signal_date > overall_as_of:
+                raise ValueError(f"signal_as_of.{name} cannot be after as_of")
+            age_days = (overall_as_of - signal_date).days
+            signal_date_text = signal_date.isoformat()
+            if age_days > MAX_SIGNAL_AGE_DAYS[name]:
+                stale_signals.append(name)
+
+        used[name] = {
+            "signal": signal,
+            "weight": weight,
+            "as_of": signal_date_text,
+            "age_days": age_days,
+        }
 
     above = strict_bool(payload.get("index_above_sma200"), "index_above_sma200")
     if above is not None:
@@ -95,8 +142,15 @@ def classify(payload: dict[str, Any]) -> dict[str, Any]:
 
     coverage = used_weight / TOTAL_WEIGHT
     normalized_score = weighted_score / used_weight if used_weight else 0.0
+    freshness_status = (
+        "missing_signal_as_of"
+        if missing_signal_dates
+        else "stale"
+        if stale_signals
+        else "pass"
+    )
 
-    if coverage < 0.60 or len(used) < 3:
+    if coverage < 0.60 or len(used) < 3 or freshness_status != "pass":
         regime = "insufficient"
         status = "insufficient"
     else:
@@ -104,14 +158,17 @@ def classify(payload: dict[str, Any]) -> dict[str, Any]:
         status = "experimental_baseline"
 
     return {
-        "as_of": payload.get("as_of"),
+        "as_of": overall_as_of.isoformat(),
         "regime": regime,
         "regime_score": round(normalized_score, 4),
         "raw_weighted_score": round(weighted_score, 4),
         "signals_used": used,
         "coverage": round(coverage, 4),
+        "freshness_status": freshness_status,
+        "missing_signal_dates": sorted(missing_signal_dates),
+        "stale_signals": sorted(stale_signals),
         "status": status,
-        "warning": "Thresholds remain experimental. Regime is context, not a direct trading signal.",
+        "warning": "Thresholds and freshness tolerances remain experimental. Regime is context, not a direct trading signal.",
     }
 
 
