@@ -219,6 +219,9 @@ def validate_price_context(payload: dict[str, Any]) -> dict[str, Any]:
             )
         if quote_observation_date != quote_session_date:
             raise ValueError("last_close quote_timestamp date must match quote_session_date")
+        quote_local_time = quote_timestamp.astimezone(MARKET_TIMEZONE).time().replace(tzinfo=None)
+        if quote_local_time < _regular_close(quote_session_date):
+            raise ValueError("last_close quote_timestamp must be at or after the session regular close")
         freshness_status = "last_close_reference"
         max_age_seconds = None
     else:
