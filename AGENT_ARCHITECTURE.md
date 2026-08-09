@@ -32,6 +32,22 @@ Tactical Price/Session + Quote Freshness + R/R（短线按需）
 最终中文结论
 ```
 
+Alpha 研究按需走独立分支：
+
+```text
+WorldQuant BRAIN / Alpha Source
+  ↓
+CIS Alpha Research Agent
+  ↓
+Alpha Candidate Import
+  ↓
+Alpha Screen + Factor / OOS Diagnostics
+  ↓
+Evidence / Leakage / Cost / Capacity / Diversification Review
+  ↓
+量化证据回灌 CIS（decision_authority = none）
+```
+
 ## Core 与 Extension
 
 CIS Core 只负责分析、证据、风险、评分和交易纪律。
@@ -42,7 +58,29 @@ CIS Core 只负责分析、证据、风险、评分和交易纪律。
 - Backtest：规则/因子/阈值验证；
 - Prediction/Evaluation：可选记录、结算和校准诊断。
 
+Alpha Discovery / Validation 物理隔离在 `extensions/alpha_research/`：
+
+- `worldquant/`：WorldQuant BRAIN Alpha 导入与研究筛选；
+- `factor_engine/`：Rank IC、Top-Bottom spread 等横截面诊断；
+- `ml_research/`：外部模型 prediction 的 train/validation/test 与 OOS 诊断；
+- 所有 Alpha Research 输出固定 `decision_authority = none`，不得自动交易或改写 CIS 生产评分权重。
+
 Extension 故障不得阻塞日常单股分析，也不得自动修改 CIS 生产权重。
+
+## WorldQuant BRAIN / Alpha Research Agent 边界
+
+WorldQuant BRAIN 是 **Alpha 候选来源**，不是 CIS 最终投资决策器。CIS 第一版只接收用户导出 JSON 或合法 API 返回 JSON，不保存 BRAIN 密码/API key，不自动提交 Alpha，也不自动下单。
+
+标准候选契约：
+
+```text
+schema_version = cis.alpha_candidate.v1
+source = worldquant_brain
+research_status = unreviewed
+decision_authority = none
+```
+
+BRAIN 指标通过只允许进入 `candidate_for_cis_validation`。升级为可用研究证据前仍必须检查经济解释、数据泄漏/前视偏差、样本外、换手/成本/容量以及相关性/分散化。
 
 ## 原版 TradingAgents
 
@@ -103,4 +141,5 @@ Tactical setup 与 Research Grade 分开；高分不自动等于当前可以买�
 - 原版 TradingAgents：`plugins/chen-investment-system/skills/cis/references/tradingagents.md`
 - 评分引擎：`plugins/chen-investment-system/skills/cis/references/scoring-engine.md`
 - 四层交易：`plugins/chen-investment-system/skills/cis/references/four-layer-trading-framework.md`
-- Optional Extensions：`extensions/research_tooling/`
+- Optional Research Tooling：`extensions/research_tooling/`
+- Alpha Research Agent：`extensions/alpha_research/`
