@@ -205,6 +205,19 @@ class TacticalSetupGateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "quote_timestamp date"):
             evaluate_tactical_setup(payload)
 
+    def test_closed_market_rejects_preclose_timestamp_as_last_close(self) -> None:
+        payload = dict(BASE)
+        payload.update({
+            "analysis_timestamp": "2026-08-09T10:30:00-04:00",
+            "quote_timestamp": "2026-08-07T09:00:00-04:00",
+            "market_session": "closed",
+            "price_type": "last_close",
+            "quote_session_date": "2026-08-07",
+        })
+        payload.pop("quote_max_age_seconds")
+        with self.assertRaisesRegex(ValueError, "at or after the session regular close"):
+            evaluate_tactical_setup(payload)
+
     def test_short_setup_supported(self) -> None:
         payload = dict(BASE)
         payload.update({
