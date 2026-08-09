@@ -1,15 +1,15 @@
 ---
 name: cis
-description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一用户入口。凡用户在投资语境下要求分析、判断、估值、买卖、持仓、财报、风险、目标价、买入价或卖出价的股票/上市公司/ETF，默认进入 CIS；包括“分析 MU”“看看 NVDA”“MU能买吗”“QQQ还能持有吗”等简短表达。纯事实型问题（如公司全称、CEO是谁、ETF跟踪什么指数）不强制进入完整 CIS。股票/上市公司研究默认使用 TradingAgents 多 Agent 核心，专业财务/估值/财报方法按需使用 Anthropic Financial Services，最终由 CIS 执行证据门、八维评分、四层交易、ETF/QDII纪律、组合门和中文结论。
+description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一用户入口。凡用户在投资语境下要求分析、判断、估值、买卖、持仓、财报、风险、目标价、买入价或卖出价的股票/上市公司/ETF，默认进入 CIS；包括“分析 MU”“看看 NVDA”“MU能买吗”“QQQ还能持有吗”等简短表达。纯事实型问题不强制进入完整 CIS。股票/上市公司研究默认使用 TradingAgents 多 Agent 核心；本地不可执行时可通过 GitHub Actions 远程桥真实运行 TradingAgents；专业财务/估值/财报方法按需使用 Anthropic Financial Services；最终由 CIS 执行证据门、八维评分、四层交易、ETF/QDII纪律、组合门和中文结论。
 ---
 
-# 陈氏投资系统（CIS）0.3.0
+# 陈氏投资系统（CIS）0.3.1
 
 CIS 是唯一用户入口和最终质量控制层。
 
-**默认架构：CIS Control Layer + TradingAgents Core + Anthropic Financial Services。**
+**默认架构：CIS Control Layer + TradingAgents Core（本地或 GitHub Remote）+ Anthropic Financial Services。**
 
-TradingAgents 的 Portfolio Manager、Trader 或 BUY/SELL/HOLD 只能产生外部候选判断；最终 CIS 研究姿态必须回到本 Skill 的质量门。
+TradingAgents 的 Portfolio Manager、Trader 或 BUY/SELL/HOLD 只能产生 `external_decision_candidate`；最终 CIS 研究姿态必须回到本 Skill 的质量门。
 
 ## 自动触发规则
 
@@ -21,24 +21,20 @@ TradingAgents 的 Portfolio Manager、Trader 或 BUY/SELL/HOLD 只能产生外�
 - 询问合理买入价、目标价、止盈价、止损价、估值、上涨空间、风险、财报影响、仓位或持仓复盘；
 - 比较两个或多个股票/ETF 谁更值得研究、买入或持有。
 
-以下纯事实型问题不强制启动完整 CIS，直接回答即可：
+纯事实型问题如公司全称、CEO、跟踪指数、交易时间、代码或上市地点，不强制启动完整 CIS。
 
-- `MU 全称是什么`；
-- `英伟达 CEO 是谁`；
-- `QQQ 跟踪什么指数`；
-- 单纯询问交易时间、代码、上市地点等不需要投资判断的问题。
-
-判断原则：**只要答案会影响投资研究或交易决策，默认进入 CIS；只是在查一个稳定事实，不必运行完整 CIS。**
+判断原则：**只要答案会影响投资研究或交易决策，默认进入 CIS；只是在查稳定事实，不必运行完整 CIS。**
 
 ## Runtime Guard：每次强制校验
 
-当 CIS 因显式指令或上述自动触发规则启动时：
+当 CIS 因显式指令或自动触发规则启动时：
 
-1. 先读取本 `SKILL.md` 与必读 references。
-2. 若当前环境可访问 GitHub，优先核验 `chentinghui/chen-investment-system` 的 `main`，不得凭聊天记忆恢复旧流程、旧权重或旧外部模块。
-3. 股票/上市公司任务读取 `references/tradingagents.md`，检查 TradingAgents 是否真实可执行。
-4. 专业金融任务读取 `references/anthropic-financial-services.md`，只在目标 Skill 真实可访问时声称运行。
-5. 任何外部结果必须回到 CIS：证据审计 → 风险门 → 冲突处理 → 八维评分 → 四层/ETF/组合门 → 最终中文结论。
+1. 先读取本 `SKILL.md` 与下面的必读 references。
+2. 若当前环境可访问 GitHub，优先核验 `chentinghui/chen-investment-system` 当前 `main`，不得凭聊天记忆恢复旧流程、旧权重或旧外部模块。
+3. 股票/上市公司任务读取 `references/tradingagents.md`，按“本地执行 → GitHub Actions 远程桥 → fallback”的顺序检查 TradingAgents。
+4. 本地包未安装**不再等于 TradingAgents 不可用**；若 GitHub 连接器可写本仓库，可在当前任务内通过远程桥运行。
+5. 专业金融任务读取 `references/anthropic-financial-services.md`，只在目标 Skill 本次真实可访问时声称运行。
+6. 任何外部结果必须回到 CIS：证据审计 → 风险门 → 冲突处理 → 八维评分 → 四层/ETF/组合门 → 最终中文结论。
 
 ## 必读资料
 
@@ -67,29 +63,50 @@ TradingAgents 的 Portfolio Manager、Trader 或 BUY/SELL/HOLD 只能产生外�
 
 ## 默认股票研究核心：TradingAgents
 
-TradingAgents 本次状态为 `installed_ready` 时，股票/上市公司默认走：
+有效 TradingAgents 运行可以来自两条路径。
+
+### 本地路径
+
+当前环境可导入 `tradingagents` 且模型/API/数据源就绪时，使用 `scripts/run_tradingagents.py` 或等价方式真实执行 `.propagate()`。
+
+### GitHub Actions 远程路径
+
+当前对话环境不能安装/运行 TradingAgents，但 GitHub 连接器对本仓库有写权限时，按 `references/tradingagents.md` 使用远程桥：
 
 ```text
-Fundamentals + Technical + News + Sentiment
-                ↓
-          Bull / Bear Debate
-                ↓
-        Research Manager
-                ↓
-              Trader
-                ↓
-       Risk Management Team
-                ↓
-        Portfolio Manager
-                ↓
- external_decision_candidate
+写 runtime/tradingagents/request.json
+        ↓
+GitHub Actions 自动触发
+        ↓
+安装 TradingAgents 当前上游 main
+        ↓
+运行 TradingAgentsGraph(...).propagate(...)
+        ↓
+写回 runtime/tradingagents/results/<request_id>.json
+        ↓
+CIS 按 request_id / ticker / analysis_date / status 校验
 ```
 
-可使用 `scripts/run_tradingagents.py` 做导入探测和 `.propagate()` 适配。
+只有匹配本次请求且 `status=success`、`runtime_readiness=remote_ready`、`external_decision_candidate` 非空时，才能声称本次 TradingAgents 实际运行。
+
+进行中、失败、旧 request_id、旧 ticker、旧日期或笼统 `result.json` 都不能冒充本次结果。
+
+远程执行必须在当前任务内完成检查；如果本次无法形成有效结果，立即降级到 fallback，不承诺稍后异步交付。
+
+## 研究深度与 selected_analysts
+
+TradingAgents 原生可选择 `market`、`fundamentals`、`news`、`social` analyst。CIS 只调用会改变结论的最小集合：
+
+- `quick`：1–2 个最相关 analyst；关键证据缺口才扩展。
+- `standard`：通常 `market + fundamentals + news`；只有情绪会改变结论时增加 `social`。
+- `deep`：四个 analyst 全开，并运行正常 Bull/Bear 与 Risk Debate。
+- `holding_review`：按持仓问题选择 analyst，之后强制执行 CIS 四层交易框架；组合资料足够时再执行组合门。
+
+`max_debate_rounds=0` / `max_risk_rounds=0` 只用于 smoke test 或明确的轻量诊断，不得包装成完整 Deep 研究。
 
 ### TradingAgents 不能覆盖的 CIS 能力
 
-- GitHub 最新版本校验；
+- GitHub 最新 CIS 版本校验；
 - 证据等级和 `as_of`；
 - 前视偏差检查；
 - 八维统一评分与 coverage gate；
@@ -97,6 +114,7 @@ Fundamentals + Technical + News + Sentiment
 - 盈利止盈 + 防守止损；
 - ETF/QDII 溢价纪律；
 - 用户真实组合数据门；
+- 用户个人投资规则；
 - 最终中文研究姿态与复盘。
 
 ## 专业金融方法：Anthropic Financial Services
@@ -113,12 +131,12 @@ Fundamentals + Technical + News + Sentiment
 
 Anthropic 输出进入 CIS 证据登记，可补充或纠正 TradingAgents 通用判断。
 
-## CIS 自写 Agent 的新定位
+## CIS 自写 Agent 的定位
 
-原 `plugins/chen-investment-system/agents/` 不删除，但默认降级为：
+`plugins/chen-investment-system/agents/` 保留，但默认是：
 
-- fallback adapters：TradingAgents 不可运行时兜底；
-- conflict validators：外部核心之间有关键冲突时复核；
+- fallback adapters：本地和远程 TradingAgents 都不能形成有效结果时兜底；
+- conflict validators：外部核心之间存在关键冲突时复核；
 - CIS-specific adapters：四层交易、组合门、证据审计等 CIS 特有规则。
 
 不得在 TradingAgents 正常运行时无理由重复跑同职责自写 Agent。
@@ -143,14 +161,14 @@ evidence_provided: 用户资料、连接器、公开资料或无
 
 1. Intake：对象、问题、模式、期限、`analysis_date/as_of`。
 2. Runtime Guard：读取 GitHub 当前 CIS。
-3. Preflight：TradingAgents、Anthropic、数据源本次就绪度。
+3. Preflight：TradingAgents 本地、TradingAgents Remote、Anthropic、数据源本次就绪度。
 4. Evidence：登记事实、计算、假设、来源和限制。
-5. Core Research：股票任务优先 TradingAgents。
+5. Core Research：股票任务优先真实 TradingAgents；本地不可执行时尝试远程桥。
 6. Professional Skills：按需 Anthropic。
-7. Fallback：仅在外部核心不可用/冲突时启用 CIS 自写 adapters。
+7. Fallback：本地与远程核心都无有效结果、或存在关键冲突时，才启用 CIS 自写 adapters。
 8. Audit：证据审计 + CIS 风险门。
 9. Score：满足覆盖后运行 `scoring-engine.md`。
-10. Trade Framework：涉及买卖/价位时执行趋势→价格→成交→风险。
+10. Trade Framework：涉及买卖/价位时执行趋势 → 价格 → 成交 → 风险。
 11. ETF/Portfolio Gate：按任务执行专属约束。
 12. Synthesis：最终中文研究姿态、证伪条件、下一复盘。
 
@@ -167,9 +185,9 @@ evidence_provided: 用户资料、连接器、公开资料或无
 - positioning 5
 - risk_resilience 10
 
-`coverage < 70%` 不输出单一总分；`70%–85%` 为 provisional；`>=85%` 且质量门通过才可 decision_grade。
+`coverage < 70%` 不输出单一总分；`70% <= coverage < 85%` 为 provisional；`coverage >= 85%` 且质量门通过才可 decision_grade。
 
-TradingAgents 的最终 rating 不能直接转换为 CIS 分数。
+TradingAgents 的 rating、BUY/SELL/HOLD 或 Portfolio Manager 结论不能直接转换为 CIS 分数。
 
 ## 四层交易框架
 
@@ -180,12 +198,7 @@ TradingAgents 的最终 rating 不能直接转换为 CIS 分数。
 3. **成交层**：成交密集区、相对均量、量价确认；
 4. **风险层**：成本、权重、集中度、回撤承受力、资金需求。
 
-TradingAgents Technical Analyst 只是输入，不替代该框架。
-
-卖出必须同时分析：
-
-- 盈利止盈；
-- 防守止损。
+TradingAgents Technical/Market Analyst 只是输入，不替代该框架。卖出必须同时分析盈利止盈和防守止损。
 
 ## ETF / QDII
 
@@ -204,8 +217,9 @@ ETF，尤其跨境 ETF / QDII，不默认交给 TradingAgents 做最终产品判
 最终输出必须说明：
 
 - CIS 规则版本；
-- TradingAgents 是否实际运行及数据截止时间；
+- TradingAgents 是本地、远程、fallback 还是未运行；
+- TradingAgents 的 `analysis_date`、request_id（远程时）和数据截止时间；
 - Anthropic 专业 Skill 是否实际运行；
-- CIS评分覆盖度；
+- CIS 评分覆盖度；
 - 为什么不是更高/更低分；
 - 关键证伪条件和复盘触发点。
