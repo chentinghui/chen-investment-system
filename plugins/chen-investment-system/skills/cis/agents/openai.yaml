@@ -1,4 +1,4 @@
 interface:
   display_name: "陈氏投资系统"
-  short_description: "总控 Agent 协调专家、Skills、证据门、风险门与 0–100 统一评分"
-  default_prompt: "使用 $cis（陈氏投资系统）由陈氏投资分析师总控选择最少专家团队，检查资料就绪度、证据与风险门，并在覆盖充分时生成统一评分和可复盘的中文结论。"
+  short_description: "CIS 控制层 + TradingAgents 默认研究核心 + Anthropic 专业金融 Skills"
+  default_prompt: "使用 $cis（陈氏投资系统）先核验 GitHub 当前版本；股票研究优先检查并运行 TradingAgents，专业 DCF/Comps/财报任务按需调用 Anthropic Financial Services，最后执行 CIS 证据门、八维评分、四层/ETF/组合门并输出中文结论。"
