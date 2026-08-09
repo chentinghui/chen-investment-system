@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import sys
-import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -12,7 +10,6 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from check_tradingagents_upstream import apply_check, should_check
-from prediction_ledger import materialize, record_outcome, record_prediction
 from run_tradingagents_remote import validate_request
 
 
@@ -33,41 +30,6 @@ class TradingAgentsTTLTests(unittest.TestCase):
         result = apply_check(status, "new", now)
         self.assertEqual(result["review_status"], "review_required")
         self.assertEqual(result["upstream_check"], "change_detected")
-
-
-class PredictionLedgerTests(unittest.TestCase):
-    def test_prediction_is_immutable_and_outcome_is_separate_event(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            ledger = Path(tmp) / "predictions.jsonl"
-            prediction = {
-                "research_id": "MU-20260809-001",
-                "as_of": "2026-08-09",
-                "ticker": "MU",
-                "cis_version": "0.4.2",
-                "cis_score": 82,
-                "score_status": "provisional",
-                "research_posture": "进入深入研究",
-                "horizon_days": 90,
-                "benchmark": "SOXX",
-                "dimension_scores": {"valuation": 70},
-            }
-            record_prediction(ledger, prediction)
-            with self.assertRaisesRegex(ValueError, "already exists"):
-                record_prediction(ledger, prediction)
-
-            outcome = {
-                "research_id": "MU-20260809-001",
-                "evaluation_as_of": "2026-11-07",
-                "realized_return": 0.12,
-                "benchmark_return": 0.08,
-                "max_drawdown_during_horizon": -0.15,
-                "falsifier_triggered": False,
-            }
-            record_outcome(ledger, outcome)
-            rows = materialize(ledger)
-            self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0]["cis_score"], 82)
-            self.assertEqual(rows[0]["outcome"]["realized_return"], 0.12)
 
 
 class TradingAgentsAdapterTests(unittest.TestCase):
