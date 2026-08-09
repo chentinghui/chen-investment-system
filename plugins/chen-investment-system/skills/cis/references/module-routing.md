@@ -7,6 +7,7 @@ CIS 是唯一用户入口和最终质量控制层，但**不是所有工具都�
 - 单股票/上市公司研究：默认只走 CIS Core；
 - 短线/具体买点：Core 内追加 US-equity Price/Session + Quote Freshness + Tactical R/R Gate；
 - 大股票池筛选：按需调用 `extensions/research_tooling/quant_factor_engine.py`；
+- Alpha 挖掘、WorldQuant BRAIN 候选导入或 Alpha 稳健性检查：按需调用 `extensions/alpha_research/`；
 - 专业估值/财报/模型：按需调用 Anthropic Financial Services；
 - 当前市场环境显著影响交易计划：加 Market Regime；
 - 新规则/因子需要证明有效：按需调用 Backtest Extension；
@@ -25,12 +26,47 @@ CIS 是唯一用户入口和最终质量控制层，但**不是所有工具都�
 | 短线买入/做差价 | ChatGPT-native Methodology + Session/Freshness + Tactical R/R | Regime（按需） | Tactical Context Checks + 四层交易 |
 | 买入/卖出/持有 | ChatGPT-native Methodology | Regime（按需） | Critical Dimensions + 四层交易 + Portfolio Gate |
 | 大股票池 Top N | CIS 受理 | **Quant Extension** | 候选再回到 CIS Core 深研 |
+| Alpha 挖掘 / WorldQuant BRAIN | CIS 受理 | **Alpha Research Agent** | 候选只作为研究证据；无最终动作权 |
 | 量化规则是否有效 | CIS 受理 | **Backtest Extension** | 不自动改生产规则 |
 | 当前市场环境 | Market Regime | 宏观证据 | 不直接触发买卖 |
 | ETF / QDII | CIS ETF 模块 | 可验证产品数据 | ETF/QDII专属纪律 |
 | 组合再平衡 | 单标的研究 + Regime | Portfolio Gate | 真实组合数据门 |
 | 历史复盘/评分校准 | CIS 受理 | **Prediction/Evaluation Extension** | horizon 分离 + 独立样本纪律 |
 | 运行原版 TradingAgents | 原版 local/remote | A/B 验证 | external_decision_candidate 仅作输入 |
+
+## Alpha Research Agent 路由
+
+统一位于：
+
+```text
+extensions/alpha_research/
+```
+
+WorldQuant BRAIN 的职责是提供/模拟 Alpha 候选；CIS 不把 BRAIN 的单个平台指标直接当成最终 Alpha 证明。
+
+```text
+BRAIN export / 合法 API JSON
+        ↓
+worldquant/alpha_import.py
+        ↓
+cis.alpha_candidate.v1
+        ↓
+worldquant/alpha_validator.py
+        ↓
+factor_engine / ml_research
+        ↓
+CIS Evidence / Risk / Portfolio
+```
+
+固定边界：
+
+- `source=worldquant_brain`；
+- `research_status=unreviewed`；
+- `decision_authority=none`；
+- `candidate_for_cis_validation` 只表示通过初筛，不表示可交易；
+- BRAIN credentials、password、API key、brokerage/live-order 字段不得进入 Alpha candidate 契约；
+- 继续检查 economic rationale、look-ahead/data leakage、out-of-sample、turnover/cost/capacity、correlation/diversification；
+- Alpha Research Agent 不自动提交 BRAIN Alpha、不自动交易、不自动改写 CIS 生产权重。
 
 ## Critical Dimension / Context Check 路由
 
@@ -150,6 +186,7 @@ us_nasdaq_v1 → QQQ + Nasdaq-100 breadth
 - ChatGPT-native Analyst 已覆盖的职责不重复跑同职责 fallback Agent；
 - Tactical Gate 只负责价格语义、session/freshness、setup 生命周期和赔率几何，不重复基本面/技术研究；
 - Quant 只筛选，不重复做最终公司研究；
+- Alpha Research Agent 只发现/验证候选，不重复做最终公司研究或交易裁决；
 - Anthropic 只负责专业子问题，不拥有最终动作权；
 - Market Regime 不重复技术分析，只提供环境层；
 - Backtest/Evaluation 只验证和复盘，不自动修改生产规则；
