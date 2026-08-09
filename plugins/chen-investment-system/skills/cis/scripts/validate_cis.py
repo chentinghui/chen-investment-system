@@ -71,7 +71,6 @@ def main() -> int:
     if plugin_json.get("version") != CIS_VERSION:
         raise AssertionError(f"plugin metadata version must equal {CIS_VERSION}")
 
-    # Core architecture and routing invariants.
     require(skill, (
         "CIS Core",
         "Optional Research Tooling",
@@ -104,7 +103,6 @@ def main() -> int:
         "next_session_close_to_close_adjusted_price_return",
     ), "performance loop")
 
-    # Agent -> deterministic score contract must not drift.
     evidence_agent = read(PLUGIN_ROOT / "agents" / "evidence-auditor.md")
     risk_agent = read(PLUGIN_ROOT / "agents" / "risk-manager.md")
     require(evidence_agent, (
@@ -117,7 +115,6 @@ def main() -> int:
         "不再使用机器枚举 `caution`",
     ), "risk manager")
 
-    # Core scripts must remain in Core; research tooling must remain physically outside it.
     required_core = (
         "score_cis.py",
         "analyze_etf_premium.py",
@@ -196,7 +193,6 @@ def main() -> int:
     ), "remote TradingAgents adapter")
     forbid(remote, ("TRADINGAGENTS_API_KEY",), "remote TradingAgents adapter")
 
-    # Optional extension safety/data-quality contracts.
     quant = read(EXT / "quant_factor_engine.py")
     backtest = read(EXT / "backtest_factor_strategy.py")
     ledger = read(EXT / "prediction_ledger.py")
@@ -239,7 +235,6 @@ def main() -> int:
         "Correlations are never pooled across different horizons",
     ), "evaluation extension")
 
-    # Tests must explicitly exercise the bugs fixed in 0.4.5.
     tactical_tests = read(SCRIPTS / "test_tactical_setup_gate.py")
     etf_tests = read(SCRIPTS / "test_analyze_etf_premium.py")
     hardening_tests = read(SCRIPTS / "test_hardening.py")
@@ -272,7 +267,6 @@ def main() -> int:
         "test_mixed_horizons_do_not_pool_correlations_or_inflate_unique_research",
     ), "extension tests")
 
-    # GitHub Actions supply-chain/secret boundary.
     remote_workflow = read(REPO_ROOT / ".github" / "workflows" / "cis-tradingagents.yml")
     require(remote_workflow, (
         "permissions:\n  contents: read",
@@ -282,7 +276,7 @@ def main() -> int:
         "PINNED_SHA",
         "actions/upload-artifact@v4",
         "actions/download-artifact@v4",
-        "Trusted Publisher",
+        "trusted publisher",
         "contents: write",
         "NVIDIA_API_KEY",
         "OPENAI_COMPATIBLE_API_KEY",
