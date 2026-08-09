@@ -21,7 +21,9 @@ from typing import Any
 
 
 DEFAULT_BACKEND = "ollama"
-DEFAULT_OLLAMA_MODEL = "qwen3:4b"
+DEFAULT_OLLAMA_MODEL = "qwen3:4b-instruct"
+DEFAULT_ANALYSTS = ["market", "social", "news", "fundamentals"]
+ALLOWED_ANALYSTS = set(DEFAULT_ANALYSTS)
 OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1"
 
 
@@ -68,6 +70,17 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
     if debate_rounds < 0 or risk_rounds < 0:
         raise ValueError("debate rounds must be >= 0")
 
+    raw_analysts = payload.get("selected_analysts", DEFAULT_ANALYSTS)
+    if not isinstance(raw_analysts, list) or not raw_analysts:
+        raise ValueError("selected_analysts must be a non-empty list")
+    selected_analysts: list[str] = []
+    for item in raw_analysts:
+        analyst = str(item).strip().lower()
+        if analyst not in ALLOWED_ANALYSTS:
+            raise ValueError(f"unsupported analyst: {analyst}")
+        if analyst not in selected_analysts:
+            selected_analysts.append(analyst)
+
     return {
         "request_id": str(payload.get("request_id") or f"{ticker}-{analysis_date}"),
         "ticker": ticker,
@@ -76,6 +89,7 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
         "backend_url": backend_url,
         "deep_model": deep_model,
         "quick_model": quick_model,
+        "selected_analysts": selected_analysts,
         "max_debate_rounds": debate_rounds,
         "max_risk_rounds": risk_rounds,
         "output_language": str(payload.get("output_language") or "Chinese"),
@@ -110,6 +124,7 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"- runtime_readiness: `{result.get('runtime_readiness')}`",
         f"- request_id: `{result.get('request_id')}`",
         f"- analysis_date: `{result.get('analysis_date')}`",
+        f"- selected analysts: `{', '.join(result.get('selected_analysts') or [])}`",
         f"- TradingAgents upstream SHA: `{result.get('tradingagents_upstream_sha')}`",
         f"- LLM backend: `{result.get('backend')}`",
         f"- deep model: `{result.get('deep_model')}`",
@@ -228,7 +243,11 @@ def main() -> int:
             "prediction_markets": "polymarket",
         })
 
-        graph = TradingAgentsGraph(debug=False, config=config)
+        graph = TradingAgentsGraph(
+            selected_analysts=tuple(req["selected_analysts"]),
+            debug=False,
+            config=config,
+        )
         state, decision = graph.propagate(req["ticker"], req["analysis_date"])
         result = {
             **base_result,
