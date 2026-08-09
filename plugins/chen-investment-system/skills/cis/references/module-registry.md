@@ -1,6 +1,6 @@
 # CIS 0.4.5 模块登记表
 
-CIS 采用 **Core Analysis + Optional Research Tooling** 分层，避免把筛选、回测、记录和绩效系统塞进日常单股分析链。
+CIS 采用 **Core Analysis + Optional Research Tooling + Alpha Research** 分层，避免把筛选、回测、记录、绩效系统和 Alpha 挖掘塞进日常单股分析链。
 
 | 模块 | 作用 | 默认状态 | 所属层 | 最终动作权 |
 |---|---|---|---|---|
@@ -20,14 +20,22 @@ CIS 采用 **Core Analysis + Optional Research Tooling** 分层，避免把筛�
 | Portfolio Gate | 成本、权重、集中度、约束、资金需求 | `installed` | **Core, 按需** | 质量门 |
 | Anthropic Financial Services | DCF、Comps、财报、模型、竞争、论点/催化剂 | `upstream_preferred` | **External, 按需** | 无 |
 | Original TradingAgents Runtime | 官方 Python 多 Agent 运行；secret-backed 仅 reviewed SHA | `explicit_test_only` | **External test** | 无 |
+| WorldQuant BRAIN Alpha Source | 产生/导出 Alpha 候选；CIS 只接候选与指标 | `external_research_source` | **External, Alpha Research** | 无 |
+| CIS Alpha Research Agent | Alpha 导入、结构筛选、因子/OOS 诊断与后续研究门 | `experimental_optional` | **Alpha Research Extension** | 无 |
 | Quant Factor Ranking Engine | 大股票池候选排序；同一 as_of、ticker 唯一、最小横截面观测 | `experimental` | **Extension** | 无 |
 | Backtest / Validation | 因子/规则/阈值历史验证；(date,ticker) 唯一 | `experimental` | **Extension** | 无 |
 | Prediction / Evaluation | 可选研究记录、结果和校准；默认5/20/60交易日；公开 allowlist | `experimental_optional` | **Extension** | 无 |
 
-外围研发工具统一位于：
+外围研发工具：
 
 ```text
 extensions/research_tooling/
+```
+
+Alpha 研究扩展：
+
+```text
+extensions/alpha_research/
 ```
 
 ## 路由边界
@@ -35,10 +43,22 @@ extensions/research_tooling/
 - 日常单股分析：只要求 Core；
 - 短线/具体买点：Core 内增加 Price/Session Guard + Quote Freshness + Tactical R/R Gate；
 - 大股票池/Top N：按需启用 Quant Extension；
+- Alpha 挖掘/WorldQuant BRAIN 候选评估：按需启用 Alpha Research Agent；
 - 规则有效性验证：按需启用 Backtest Extension；
 - 用户明确要求记录、复盘或校准：按需启用 Prediction/Evaluation Extension；
 - Extension 故障不得阻塞 Core；
-- Extension 不能自动改生产评分权重或发布最终买卖动作。
+- Alpha/Extension 不能自动改生产评分权重或发布最终买卖动作。
+
+## Alpha Research 安全边界
+
+```text
+source = worldquant_brain
+schema_version = cis.alpha_candidate.v1
+research_status = unreviewed
+decision_authority = none
+```
+
+WorldQuant 指标通过只代表 `candidate_for_cis_validation`。必须继续做 economic rationale、look-ahead/data leakage、out-of-sample、turnover/cost/capacity、correlation/diversification review。
 
 ## 0.4.5 安全边界
 
@@ -58,6 +78,7 @@ Cloud/secret-backed execution 只有当当前 upstream SHA 与 `reviewed_sha` �
 - `installed_baseline`：已确定性实现，但阈值仍需未来样本验证；
 - `experimental`：已有代码/规则，但尚未充分样本外验证；
 - `experimental_optional`：实验能力且不属于默认分析链；
+- `external_research_source`：外部研究平台，仅提供候选/研究输入；
 - `explicit_test_only`：只有用户明确要求原版运行/系统测试时使用；
 - `upstream_preferred`：专业方法首选上游，必须逐次确认可访问性；
 - `fail_closed_gate`：没有明确 pass 就视为未通过。
