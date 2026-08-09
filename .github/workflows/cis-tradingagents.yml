@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: write
-  models: read
 
 concurrency:
   group: cis-tradingagents-remote
@@ -17,7 +16,7 @@ concurrency:
 jobs:
   analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
 
     steps:
       - name: Checkout CIS repository
@@ -38,11 +37,39 @@ jobs:
           echo "TRADINGAGENTS_UPSTREAM_SHA=$(git -C /tmp/TradingAgents rev-parse HEAD)" >> "$GITHUB_ENV"
           python -m pip install /tmp/TradingAgents
 
-      - name: Run TradingAgents through GitHub Models
+      - name: Prepare zero-secret Ollama backend when requested
+        shell: bash
+        run: |
+          set -euo pipefail
+          BACKEND=$(python -c 'import json; print(json.load(open("runtime/tradingagents/request.json")).get("backend", "ollama"))')
+          if [ "$BACKEND" != "ollama" ]; then
+            echo "Cloud/OpenAI-compatible backend requested; skipping Ollama setup."
+            exit 0
+          fi
+
+          curl -fsSL https://ollama.com/install.sh | sh
+          (nohup ollama serve >/tmp/ollama.log 2>&1 &) || true
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+
+          DEEP_MODEL=$(python -c 'import json; r=json.load(open("runtime/tradingagents/request.json")); print(r.get("deep_model") or "qwen3:4b")')
+          QUICK_MODEL=$(python -c 'import json; r=json.load(open("runtime/tradingagents/request.json")); print(r.get("quick_model") or r.get("deep_model") or "qwen3:4b")')
+          ollama pull "$DEEP_MODEL"
+          if [ "$QUICK_MODEL" != "$DEEP_MODEL" ]; then
+            ollama pull "$QUICK_MODEL"
+          fi
+          ollama list
+
+      - name: Run TradingAgents remote engine
         id: tradingagents
         continue-on-error: true
         env:
-          GITHUB_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TRADINGAGENTS_API_KEY: ${{ secrets.TRADINGAGENTS_API_KEY }}
           PYTHONUNBUFFERED: "1"
         run: |
           python plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py \
@@ -64,8 +91,7 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add runtime/tradingagents/result.json
-          git add runtime/tradingagents/result.md
+          git add runtime/tradingagents/result.json runtime/tradingagents/result.md
           if git diff --cached --quiet; then
             echo "No result changes to commit."
           else
