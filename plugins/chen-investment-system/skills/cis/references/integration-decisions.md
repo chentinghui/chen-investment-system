@@ -1,25 +1,40 @@
 # CIS Integration Decisions
 
-As-of: 2026-07-26. Reverify repository state, licenses, dependencies, and quality before changing these decisions.
+As-of: 2026-08-09. Reverify repository state, licenses, dependencies, paths, and quality before changing these decisions.
 
-## v1 architecture
+## Current architecture
 
 - `cis` is the sole user-facing investment-research orchestrator.
 - `buffett` is an external, optional qualitative ownership lens unless the user explicitly asks for standalone Buffett analysis.
+- Anthropic `financial-services` is the preferred professional Skill upstream for financial modeling, valuation, earnings research, initiating coverage, competitive analysis, thesis tracking, catalyst management, and related institutional research workflows.
 - `stock-research-assistant` is retained only as a legacy Chinese alias that hands off to CIS.
 - Installed capability and per-task runtime readiness are separate states.
 
 ## Accepted external capabilities
 
 - `buffett`: accepted for business quality, management integrity and ability, moat, capital allocation, owner earnings, and sell discipline. Its upstream repository is not bundled because no clear LICENSE was found at publication time.
-- `public-equity-investing`: accepted as an optional source-backed workflow engine for financials, valuation, earnings, macro transmission, ETF/index constituent diligence, portfolio risk, scenarios, research artifacts, and supporting model work. OpenAI bundled/curated source is not copied.
+- `anthropics/financial-services`: accepted as the preferred professional-method upstream. Use the smallest relevant Skill, preserve source/as-of discipline, and adapt environment-specific Claude/Cowork/MCP/Office instructions to currently callable tools. Apache-2.0 was verified when this decision was recorded; reverify before vendoring or redistribution.
 
-## Not bundled
+## Ownership boundary
+
+Anthropic Financial Services does **not** replace the following CIS-owned capabilities:
+
+- CIS sole orchestration and final research posture;
+- evidence gate and evidence-confidence rules;
+- risk gate and risk-manager override;
+- eight-dimension CIS scoring engine and coverage thresholds;
+- four-layer trading framework;
+- profit-taking + defensive-stop dual sell framework;
+- cross-border ETF/QDII premium discipline;
+- portfolio-data gate;
+- Chinese synthesis, falsification conditions, monitoring, and review lifecycle.
+
+## Not bundled / deferred
 
 | Candidate | Decision | Reason |
 |---|---|---|
 | `agi-now/buffett-skills` | External dependency only | Useful qualitative module, but no clear upstream LICENSE was found; link and attribution only, no source redistribution. |
-| OpenAI Public Equity Investing | External optional enhancement | Third-party/curated plugin capability; reference by dependency name only. |
+| Anthropic `financial-services` | Live upstream preferred; snapshot optional | Prefer reading current upstream Skill files to avoid drift. Vendor only with explicit upstream SHA, sync date, attribution, and license review. |
 | `llmquant/skills@llmquant-etfs` | Defer | Focused ETF router, but its useful path depends on LLMQuant Data or a compatible holdings-data MCP that is not verified. |
 | `claude-office-skills/skills@stock-analysis` | Reject | Duplicates accepted capabilities and includes environment-specific metadata and stale example data. |
 | `claude-office-skills/skills@competitive-analysis` | Reject | Generic product/marketing intelligence rather than investor-grade public-equity analysis; overlaps CIS composite routing. |
