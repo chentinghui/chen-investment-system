@@ -1,6 +1,6 @@
 # 陈氏投资系统（Chen Investment System，CIS）
 
-当前版本：**0.4.2**
+当前版本：**0.4.3**
 
 CIS 是一个中文系统化股票研究控制层。它的核心职责是**分析**：组织证据、多角色研究、风险审查、评分、市场环境和交易计划。CIS 不自动下单，也不要求每次研究都运行量化、回测或历史绩效模块。
 
@@ -17,11 +17,13 @@ Anthropic Financial Services（专业子问题按需）
   ↓
 Evidence Audit + Risk Review（fail-closed）
   ↓
-Critical Dimension Gate
+Critical Dimension / Context Checks
   ↓
-CIS 八维评分
+CIS 八维 Quality Score
   ↓
 Market Regime（按交易问题需要）
+  ↓
+Price/Session Guard + Tactical R/R Gate（短线按需）
   ↓
 四层交易 / ETF-QDII / Portfolio Gate
   ↓
@@ -29,6 +31,17 @@ Market Regime（按交易问题需要）
 ```
 
 日常单股分析只运行与当前问题相关的 Core 能力。CIS Core 的失败条件不会因为外围研发工具不可用而扩大。
+
+## 0.4.3 Tactical Hardening
+
+本版不增加新的多 Agent 或数据库，而是强化短线分析纪律：
+
+- `score_cis.py` 对 `audit_status`、`risk_status`、`risk_override` 做严格枚举校验；`critical_blocked` 和 tactical context checks 必须是真正 JSON boolean，修复字符串 `"false"` 被当成 True 的问题；
+- `decision_context=tactical` 除 technical + risk_resilience 外，还必须完成 `price_context` 与 `catalyst_event_review`；没有正面催化剂可以是合法结果，但不能跳过检查；
+- 新增 `tactical_setup_gate.py`，严格区分 premarket / regular / afterhours / closed 与对应价格类型，`last_close` 不再冒充实时 current price；
+- 短线交易强制把 CIS Quality Score 与当前交易赔率分开，输出 Entry Zone、Chase Limit、Stop、Target、R/R；
+- Market Regime 每个已使用信号要求独立 `signal_as_of`，明显 stale 的组合直接降级为 `insufficient`；
+- Optional Prediction/Evaluation 默认观察周期调整为 **5/20/60 交易日**，并修复用研究日前收盘价当作后续可执行入场价的 look-ahead 问题。
 
 ## Optional Research Tooling
 
@@ -59,15 +72,6 @@ extensions/research_tooling/
 
 需要 DCF、Comps、Earnings、三表、模型审计、竞争分析、论点或催化剂等专业金融方法时，优先读取 Anthropic `financial-services` 上游 `main` 的目标 Skill。只有本次真实读取/执行后才能声称使用；输出仍必须经过 CIS Evidence/Risk/Score 等规则。
 
-## 0.4.2 Hardening
-
-- Evidence Audit / Risk Review 为 **fail-closed**：没有明确 `pass` 就不能 `decision_grade`；
-- Critical Dimension Gate 防止 coverage 掩盖关键维度缺失；
-- TradingAgents 7 天 TTL 有确定性执行器；
-- Market Regime 严格校验输入；
-- Original TradingAgents 将执行成功与研究质量拆开；
-- CI 分别验证 **CIS Core** 与 **Optional Research Tooling**。
-
 ## CIS 八维评分
 
 | 维度 | 权重 |
@@ -84,17 +88,42 @@ extensions/research_tooling/
 ```text
 coverage < 70%        → insufficient
 70% <= coverage < 85% → provisional
-coverage >= 85%       → 仍需 Audit/Risk/Critical Dimensions 全部通过才可 decision_grade
+coverage >= 85%       → 仍需 Audit/Risk/Critical Dimensions/Context Checks 全部通过才可 decision_grade
 ```
 
-Critical Dimensions：
+Critical Dimensions / Context Checks：
 
 ```text
 generic   → fundamentals + valuation + risk_resilience
 long_term → fundamentals + growth + valuation + risk_resilience
-tactical  → technical + risk_resilience
+tactical  → technical + risk_resilience + price_context + catalyst_event_review
 earnings  → fundamentals + catalyst_macro + risk_resilience
 ```
+
+## Tactical Setup Gate
+
+对短线做差价、具体买点或“现在能不能追”的问题，CIS 额外执行：
+
+```text
+analysis_timestamp / quote_timestamp
+market_session / price_type
+Entry Zone
+Chase Limit
+Stop / Invalidation
+Target 1 / 2
+Reward / Risk
+```
+
+按 Entry Zone 中最差 Target 1 R/R 的 baseline：
+
+```text
+<1.0       reject
+1.0-<1.5   weak_setup
+1.5-<2.0   acceptable
+>=2.0      attractive
+```
+
+这些阈值是纪律 baseline，不是已经证明最优的参数。高 CIS Quality Score 也不能覆盖 `blocked_do_not_chase`。
 
 ## 四层交易框架
 
