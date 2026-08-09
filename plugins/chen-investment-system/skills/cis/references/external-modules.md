@@ -1,4 +1,4 @@
-# CIS 外部模块适配与降级（0.4.2）
+# CIS 外部模块适配与降级（0.4.3）
 
 外部模块的“存在/可访问”“程序执行成功”“研究质量通过”必须分开判断。README、历史运行记录、聊天记忆或模块名称都不能证明本次已运行，更不能证明结果可靠。
 
@@ -36,12 +36,13 @@ Anthropic `financial-services` 是 CIS 首选专业金融 Skill 上游，用于 
 
 ## Buffett / 其他可选方法
 
-任何外部投资方法都只能作为可选视角或证据增强，不得覆盖 CIS 的 Evidence、Risk、Score、Critical Dimension、Regime、四层交易、ETF/QDII 和组合门。
+任何外部投资方法都只能作为可选视角或证据增强，不得覆盖 CIS 的 Evidence、Risk、Score、Critical Dimension / Context Checks、Regime、Tactical Price/RR Gate、四层交易、ETF/QDII 和组合门。
 
 ## 数据连接器
 
 - 代码/Skill 可用不等于数据已授权或实时；
 - 行情、财报、新闻、宏观、机构持仓、资金流必须记录实际来源和 `as_of`；
+- 短线行情必须区分 regular / premarket / afterhours / last_close，并记录 quote timestamp；
 - 历史研究必须使用 point-in-time 数据，禁止 look-ahead leakage；
 - 数据不可用时可降级到公开资料/用户资料，但必须说明覆盖限制。
 
@@ -53,4 +54,4 @@ Quant、Backtest、Prediction Ledger 和 Performance/Evaluation 是 CIS 仓库�
 extensions/research_tooling/
 ```
 
-它们不依赖外部 LLM，但也不属于日常单股 Core。只有筛选、规则验证、记录/复盘/校准任务才调用；其故障不得阻塞 CIS Core。Market Regime 仍属于 CIS Core 的按需分析层。
+它们不依赖外部 LLM，但也不属于日常单股 Core。只有筛选、规则验证、记录/复盘/校准任务才调用；其故障不得阻塞 CIS Core。Market Regime 与 Tactical Price/RR Gate 仍属于 CIS Core 的按需分析层。
