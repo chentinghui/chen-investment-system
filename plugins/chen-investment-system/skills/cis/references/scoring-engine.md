@@ -1,4 +1,4 @@
-# CIS 统一评分引擎（0–100，0.4.3）
+# CIS 统一评分引擎（0–100，0.4.4）
 
 评分是研究综合工具，不是自动交易器。任何分数都必须服从 Evidence Gate、Risk Gate、Critical Dimension / Context Checks、Market Regime（按需）、Tactical Gate（短线按需）、四层交易框架和组合数据门。
 
@@ -27,7 +27,7 @@
 
 ## Quality Score 与 Tactical Setup 分离
 
-0.4.3 不凭感觉重写八维权重。CIS Score 继续回答“标的整体研究质量/吸引力如何”；短线是否适合现在做差价，由独立 Tactical Gate 回答。
+0.4.4 不凭感觉重写八维权重。CIS Score 继续回答“标的整体研究质量/吸引力如何”；短线是否适合现在做差价，由独立 Tactical Gate 回答。
 
 因此允许出现：
 
@@ -37,6 +37,8 @@ Tactical Gate = blocked_do_not_chase
 ```
 
 这表示公司/研究质量高，但当前价格赔率差或已越过追价上限。不得把高分直接翻译成“现在买”。
+
+同样，Tactical Setup 可以处于 `eligible_setup`，但如果 CIS Research coverage 不足，则 Research Grade 仍然保持 `provisional/insufficient`；两套状态不能互相伪造。
 
 ## 计算
 
@@ -96,12 +98,14 @@ ETF/QDII 不使用上述股票 Critical Dimension 组合替代产品门；ETF �
 
 `scripts/tactical_setup_gate.py` 不修改 CIS Score，只检查：
 
-- Price / Session 语义；
+- exchange-aware Price / Session 语义；
+- Quote Freshness；
 - Entry Zone；
 - Chase Limit；
-- Stop / Invalidation；
+- Stop / Invalidation 与 Stop Type；
 - Target 1 / 2；
-- Reward / Risk。
+- Reward / Risk；
+- Setup Lifecycle（active / invalidated / expired / pending confirmation）。
 
 按 Entry Zone 中最差 Target 1 R/R 的 baseline：
 
