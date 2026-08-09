@@ -19,6 +19,7 @@ YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 class DailyBar:
     session_date: date
     adjusted_close: float
+    price_basis: str = "adjusted_close"
 
 
 def now_iso() -> str:
@@ -42,7 +43,7 @@ def fetch_yahoo_daily(symbol: str, start: date, end: date) -> list[DailyBar]:
     )
     request = urllib.request.Request(
         f"{YAHOO_CHART.format(symbol=encoded)}?{params}",
-        headers={"User-Agent": "chen-investment-system/0.4.3-research-tooling"},
+        headers={"User-Agent": "chen-investment-system/0.4.5-research-tooling"},
     )
     with urllib.request.urlopen(request, timeout=20) as response:
         payload = json.load(response)
@@ -57,23 +58,21 @@ def fetch_yahoo_daily(symbol: str, start: date, end: date) -> list[DailyBar]:
     indicators = result.get("indicators", {})
     adjclose_blocks = indicators.get("adjclose") or []
     adjusted = (adjclose_blocks[0].get("adjclose") if adjclose_blocks else None) or []
-    quote_blocks = indicators.get("quote") or []
-    closes = (quote_blocks[0].get("close") if quote_blocks else None) or []
 
+    # Do not silently substitute raw close for Adjusted Close. Mixing raw and
+    # adjusted price semantics can create false returns around splits/dividends.
     bars: list[DailyBar] = []
     for index, timestamp in enumerate(timestamps):
         raw = adjusted[index] if index < len(adjusted) else None
-        if raw is None and index < len(closes):
-            raw = closes[index]
         if raw is None:
             continue
         value = float(raw)
         if not math.isfinite(value) or value <= 0:
             continue
         session = datetime.fromtimestamp(int(timestamp), tz=timezone.utc).date()
-        bars.append(DailyBar(session, value))
+        bars.append(DailyBar(session, value, "adjusted_close"))
     if not bars:
-        raise RuntimeError(f"Yahoo returned no usable closes for {symbol}")
+        raise RuntimeError(f"Yahoo returned no usable adjusted closes for {symbol}")
     return bars
 
 
@@ -176,6 +175,9 @@ def settle_prediction(
         if not path_bars or path_bars[0].session_date != entry_session or path_bars[-1].session_date != exit_session:
             warnings.append(f"{research_id}/{horizon}: incomplete stock path")
             continue
+        if any(bar.price_basis != "adjusted_close" for bar in path_bars):
+            warnings.append(f"{research_id}/{horizon}: mixed/non-adjusted stock price basis; left unresolved")
+            continue
         metrics = path_metrics([bar.adjusted_close for bar in path_bars])
 
         try:
@@ -185,15 +187,21 @@ def settle_prediction(
         except ValueError as exc:
             warnings.append(f"{research_id}/{horizon}: {exc}")
             continue
+        if benchmark_entry.price_basis != "adjusted_close" or benchmark_exit.price_basis != "adjusted_close":
+            warnings.append(f"{research_id}/{horizon}: benchmark price basis is not adjusted_close")
+            continue
 
         sector_return: float | None = None
         if sector_bars:
             try:
-                sector_return, _, _ = _benchmark_return_exact(
+                sector_return, sector_entry, sector_exit = _benchmark_return_exact(
                     sector_bars, entry_session, exit_session
                 )
+                if sector_entry.price_basis != "adjusted_close" or sector_exit.price_basis != "adjusted_close":
+                    raise ValueError("sector benchmark price basis is not adjusted_close")
             except ValueError as exc:
                 warnings.append(f"{research_id}/{horizon}: sector benchmark: {exc}")
+                sector_return = None
 
         expected_session_count = horizon + 1
         if len(path_bars) < expected_session_count:
@@ -211,6 +219,9 @@ def settle_prediction(
             "exit_session_date": exit_session.isoformat(),
             "entry_price": entry_bar.adjusted_close,
             "exit_price": exit_bar.adjusted_close,
+            "entry_price_basis": "next_benchmark_session_adjusted_close",
+            "exit_price_basis": "target_benchmark_session_adjusted_close",
+            "return_semantics": "next_session_close_to_close_adjusted_price_return",
             "realized_return": metrics["realized_return"],
             "benchmark_return": benchmark_return,
             "benchmark_entry_price": benchmark_entry.adjusted_close,
@@ -223,6 +234,7 @@ def settle_prediction(
             "falsifier_status": "not_evaluated_automatically",
             "market_data_source": "Yahoo Finance chart API (best-effort, unauthenticated)",
             "market_data_retrieved_at": now_iso(),
+            "terminal_event_handling": "not_implemented_missing_terminal_price_remains_unresolved",
         }
         if sector_return is not None:
             outcome["sector_benchmark_return"] = sector_return
@@ -258,11 +270,16 @@ def settle_due(
         except Exception as exc:
             errors.append(f"{prediction.get('research_id')}: {type(exc).__name__}: {exc}")
 
-    status = "success"
     if errors and created:
         status = "partial"
     elif errors and not created:
         status = "provider_unavailable_or_no_settlement"
+    elif warnings and created:
+        status = "partial"
+    elif warnings and not created:
+        status = "unresolved"
+    else:
+        status = "success"
     return {
         "status": status,
         "prediction_count": len(predictions),
