@@ -22,11 +22,11 @@ Evidence Audit + Risk Review
   ↓
 Critical Dimension Gate
   ↓
-CIS Score
+CIS Score / Research Grade
   ↓
 Market Regime（按交易问题需要）
   ↓
-Price/Session Guard + Tactical R/R Gate（短线按需）
+Exchange-aware Price/Session + Quote Freshness + Tactical R/R Gate（短线按需）
   ↓
 Trade / ETF / Portfolio Gate
   ↓
@@ -69,10 +69,10 @@ extensions/research_tooling/
 4. **TradingAgents 7 天 TTL**：读取 `runtime/tradingagents/upstream-status.json`。TTL 未到不访问上游；达到或超过 7 天后，由下一次股票研究执行 `scripts/check_tradingagents_upstream.py` 的同等逻辑轻量检查当前 `main` SHA。新 SHA 标记 `review_required`，未经审查不得进入 CIS。上游不可访问不阻塞正常研究。
 5. 只有用户明确要求运行/测试原版 TradingAgents 时，才启动 `references/tradingagents.md` 的本地/远程路径。
 6. 原版 TradingAgents 的 `execution_status=success` / `runtime_readiness=remote_ready` 只表示程序完成；`research_quality` 未审查时不能直接作为最终结论。
-7. 当前市场环境会显著影响交易计划时读取 `references/market-regime.md`；Regime 使用的每个信号必须登记独立 `signal_as_of`，新鲜度未通过则输出 `insufficient`。
+7. 当前市场环境会显著影响交易计划时读取 `references/market-regime.md`；必须选择 `regime_profile`，missing/stale 信号先排除，再按 fresh coverage 判断是否能分类。
 8. 专业金融任务按需读取 `references/anthropic-financial-services.md`；只有本次真实可访问时才能声称实际运行。
 9. 大股票池筛选、规则回测或历史校准时，才读取对应 references 并路由 `extensions/research_tooling/`。
-10. 对短线/价位问题必须读取 `references/evidence-confidence.md` 与 `references/four-layer-trading-framework.md`，执行 Price/Session Guard 与 Tactical R/R Gate。
+10. 对短线/价位问题必须读取 `references/evidence-confidence.md` 与 `references/four-layer-trading-framework.md`，执行 Exchange-aware Price/Session Guard、Quote Freshness Guard 与 Tactical R/R Gate。
 11. 所有外部/外围结果必须回到 CIS 最终质量门。
 
 ## 必读资料
@@ -169,21 +169,28 @@ earnings  → fundamentals + catalyst_macro + risk_resilience
 
 对 tactical，`price_context` 和 `catalyst_event_review` 是**完成检查**的布尔门，不要求催化剂一定为正；`checked_no_catalyst` 可在研究文本中作为合法结果，但检查本身必须完成。关键维度或必需检查缺失，即使 coverage >=85%，仍只能 provisional。
 
+**CIS Research Grade 与 Tactical Setup Readiness 必须分开。** `decision_grade` 不等于“现在可以买”；Tactical Setup 也不能用来补齐缺失的长期/通用研究 coverage。
+
 ## Tactical Hardening
 
-### Price / Session Guard
+### Exchange-aware Price / Session Guard
 
 短线涉及“当前价”时必须登记：
 
 ```text
 analysis_timestamp
 quote_timestamp
+exchange: XNAS | XNYS
 market_session: premarket | regular | afterhours | closed
 price_type: premarket | live | afterhours | last_close
 current_price
+quote_max_age_seconds（活跃时段）
+quote_session_date（closed / last_close）
 ```
 
-`last_close` 只能作为最近收盘参考，不能冒充实时价格。确定性校验器：`scripts/tactical_setup_gate.py`。
+`market_session` 由 `scripts/tactical_setup_gate.py` 根据 exchange + timestamp 的美东交易日历/时段基线推导；调用者提供的值只能用于交叉校验，不能覆盖推导结果。周末/主要休市日不得伪装成 `regular`。
+
+活跃时段 quote 必须通过 freshness gate。`last_close` 只能作为最近收盘参考，且必须引用最近已完成交易日。特殊临时休市仍需 Evidence Layer 额外核验。
 
 ### Tactical R/R Gate
 
@@ -193,12 +200,33 @@ current_price
 Entry Zone
 Chase Limit（如适用）
 Stop / Invalidation
+Stop Type
 Target 1
 Target 2（如适用）
 Reward / Risk
 ```
 
-按 Entry Zone 中最差 Target 1 R/R 的 baseline：`<1 reject`、`1–<1.5 weak_setup`、`1.5–<2 acceptable`、`>=2 attractive`。越过 Chase Limit → `blocked_do_not_chase`。这些阈值是纪律基线，不是已校准最优参数。
+按 Entry Zone 中最差 Target 1 R/R 的 baseline：`<1 reject`、`1–<1.5 weak_setup`、`1.5–<2 acceptable`、`>=2 attractive`。这些阈值是纪律基线，不是已校准最优参数。
+
+`stop_type`：
+
+```text
+hard_price | close_confirmation | technical_invalidation
+```
+
+非 `hard_price` 必须明确 `stop_confirmation_met=true/false`。
+
+Setup 生命周期：
+
+```text
+Stop 已失效           → invalidated_reprice_required
+Target 1 已达到/越过  → setup_expired_reprice_required
+Stop 穿越但未确认     → blocked_pending_stop_confirmation
+超过 Chase Limit      → blocked_do_not_chase
+未进入 Entry Zone     → wait_for_entry
+```
+
+旧交易计划失效后必须重新定 Entry/Stop/Target，不能继续沿用。
 
 ## Evidence Freshness
 
@@ -206,13 +234,14 @@ Reward / Risk
 
 ## Market Regime
 
-Regime 只用于环境修正，不直接机械买卖。输出：
+Regime 只用于环境修正，不直接机械买卖。必须选择：
 
 ```text
-risk_on | neutral | risk_off | insufficient
+us_broad_v1  → SPY + S&P500 breadth
+us_nasdaq_v1 → QQQ + Nasdaq-100 breadth
 ```
 
-每个已使用信号必须有独立 `signal_as_of`；缺失、未来日期或超出 baseline 新鲜度容忍范围时，Regime 必须降级为 `insufficient` 或拒绝输入。
+统一 `sma50_slope_pct` 与 `realized_vol_20d` 计算定义见 `references/market-regime.md`。missing/stale 信号先排除；fresh coverage >=60% 且 fresh signals >=3 才允许输出正式 experimental baseline。未来日期直接拒绝。
 
 ## 标准输入
 
@@ -239,11 +268,11 @@ portfolio_context: 持仓、权重、成本、基准、约束、资金需求
 5. Professional Skills：按需 Anthropic。
 6. Audit/Risk：两者均必须明确 pass 才能放行决策级。
 7. Critical Dimensions / Context Checks：按任务检查关键维度；tactical 还需 Price Context 与 Catalyst/Event Review 完成。
-8. Score：按 `scoring-engine.md`。
+8. Score：按 `scoring-engine.md`，得到 CIS Research Grade。
 9. Regime：当前环境会改变交易计划时执行。
-10. Trade Framework：涉及买卖/价位时执行趋势 → 价格 → 成交 → 风险；短线再执行 Tactical R/R Gate。
+10. Trade Framework：涉及买卖/价位时执行趋势 → 价格 → 成交 → 风险；短线再执行 Exchange/Session + Freshness + Tactical R/R + Setup Lifecycle。
 11. ETF/Portfolio Gate：按任务执行。
-12. Synthesis：最终中文研究姿态、价位/风险条件、证伪条件和复盘触发点。
+12. Synthesis：分别报告 Research Grade、Tactical Setup Readiness、价位/风险条件、证伪条件和复盘触发点。
 13. **Optional Extension**：只有筛选、规则验证、记录/复盘/校准任务才额外调用外围工具。
 
 ## 八维评分
