@@ -1,24 +1,30 @@
-# CIS Agent Layer
+# CIS Agent Layer — 0.3
 
-本目录保存陈氏投资系统（CIS）的专家 Agent 角色契约。设计上借鉴 `msitarzewski/agency-agents` 的优秀结构：**明确身份、核心使命、关键规则、具体交付物、重复可执行的工作流、交接协议与成功指标**；投资方法、评分权重、风险规则和中文输出均由 CIS 自行定义。
+本目录保存 CIS 自有 Agent 角色契约，但从 0.3.0 起它们**不再是默认股票研究团队**。
+
+默认股票研究核心由 TradingAgents 提供；本目录角色主要承担：
+
+1. **fallback adapters**：TradingAgents 本次不可执行时兜底；
+2. **conflict validators**：TradingAgents、Anthropic 或其他证据发生关键冲突时复核；
+3. **CIS-specific adapters**：执行 CIS 自有证据、四层交易、组合数据门等特殊纪律。
 
 ## 角色
 
-- `chen-chief-investment-analyst.md`：总控 Agent，唯一拥有最终 CIS 研究结论。
-- `fundamental-financial-analyst.md`：基本面与财务质量。
-- `growth-competitive-analyst.md`：成长、行业结构与竞争优势。
-- `valuation-analyst.md`：估值、隐含预期与情景。
-- `technical-market-analyst.md`：趋势、价格、成交与市场结构。
-- `macro-catalyst-strategist.md`：宏观传导、催化剂与事件路径。
-- `positioning-flow-analyst.md`：机构持仓、资金流、拥挤度与定位。
-- `risk-manager.md`：下行机制、脆弱性、证伪条件与风险覆盖。
-- `evidence-auditor.md`：独立证据/逻辑质量门。
-- `portfolio-manager.md`：在组合数据完整时评估仓位与组合后果。
+- `chen-chief-investment-analyst.md`：CIS 控制层总控，唯一拥有最终 CIS 研究姿态。
+- `evidence-auditor.md`：独立证据质量门，保持核心角色。
+- `risk-manager.md`：CIS 风险门与证伪条件，不等同于 TradingAgents Risk Team。
+- `technical-market-analyst.md`：重点执行 CIS 四层交易框架，而不是重复外部通用技术分析。
+- `portfolio-manager.md`：使用用户真实组合数据执行 CIS 组合门，不照搬外部 Portfolio Manager 仓位建议。
+- `fundamental-financial-analyst.md`：基本面 fallback / 冲突复核。
+- `growth-competitive-analyst.md`：成长竞争 fallback / 冲突复核。
+- `valuation-analyst.md`：Anthropic 专业估值不可用时的有限 fallback / 输入复核。
+- `macro-catalyst-strategist.md`：宏观传导 fallback / 冲突复核。
+- `positioning-flow-analyst.md`：资金流和拥挤度补充证据。
 
 ## 运行原则
 
-1. 总控只调度会改变结论或验证关键输入的最少专家。
-2. 专家 Agent 不直接取代 Skill；Agent 负责“谁来判断、如何交付”，Skill/工作流负责“具体能力和工具”。
-3. 专家统一按 `skills/cis/references/agent-contract.md` 返回。
-4. 总控按 `skills/cis/references/scoring-engine.md` 统一评分，但评分不得越过证据门、风险门、四层交易框架或组合数据门。
-5. 专家之间出现冲突时，不投票、不机械平均；由总控定位冲突来源并保留少数意见。
+- TradingAgents 实际成功运行后，不重复调用同职责 CIS fallback Agent，除非会验证关键冲突。
+- DCF、Comps、三表、Earnings、模型审计等专业方法优先使用 Anthropic Financial Services。
+- 外部 Portfolio Manager 输出只记为 `external_decision_candidate`。
+- 最终顺序仍由 CIS 控制：证据审计 → 风险门 → 八维评分 → 四层/ETF/组合门 → 最终中文研究姿态。
+- 外部核心不可用时才按最小团队原则启用本目录 fallback adapters。
