@@ -3,7 +3,7 @@ name: cis
 description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一用户入口。投资语境下的股票/上市公司/ETF分析、估值、买卖、持仓、财报、风险、目标价、买入价、卖出价和跨标的比较默认进入 CIS。股票研究默认由当前 ChatGPT 会话直接执行 TradingAgents 多角色方法论；全市场/大股票池筛选按需先走 Quant Engine；原版 TradingAgents Python 仅在用户明确要求运行/测试时调用；专业财务、估值和财报方法按需使用 Anthropic Financial Services；最终由 CIS 执行证据门、八维评分、Market Regime、四层交易、ETF/QDII纪律、组合门和中文结论。
 ---
 
-# 陈氏投资系统（CIS）0.4.0
+# 陈氏投资系统（CIS）0.4.1
 
 CIS 是唯一用户入口和最终质量控制层。
 
@@ -30,7 +30,7 @@ CIS 是唯一用户入口和最终质量控制层。
 1. 读取本 `SKILL.md` 与必读 references。
 2. 若可访问 GitHub，优先核验 `chentinghui/chen-investment-system` 当前 `main`，不得凭聊天记忆恢复旧规则。
 3. 股票任务读取 `references/tradingagents-methodology.md`，默认由 ChatGPT 直接执行多角色研究逻辑。
-4. 读取 `runtime/tradingagents/upstream-status.json`（可访问时）。若 `review_status=review_required`，不得自动套用未审查的 TradingAgents 上游新逻辑。
+4. **TradingAgents 使用时上游检查**：股票研究启动时获取 `TauricResearch/TradingAgents` 当前 `main` SHA，并与 `runtime/tradingagents/upstream-status.json` 的 `reviewed_sha` 比较。SHA 相同则直接使用 CIS 稳定方法论；SHA 不同则只读取与 Agent / Prompt / Graph / Tool / Risk 有关的变化并先做语义审查，未经审查的新逻辑不得直接进入 CIS。若上游本次不可访问，继续使用已验证稳定基线并披露 `upstream_check=unavailable`。
 5. 只有用户明确要求“运行原版 TradingAgents / 跑官方程序 / 系统测试”时，才启动 `references/tradingagents.md` 的本地/远程运行路径。
 6. 大股票池筛选读取 `references/quant-engine.md`；若涉及规则验证，再读 `references/backtest-validation.md`。
 7. 当前市场环境会显著影响交易计划时读取 `references/market-regime.md`。
@@ -151,23 +151,25 @@ Regime 只用于环境修正，不直接买卖：
 - 远程每次运行重新 clone `TauricResearch/TradingAgents` 当前 `main`，因此显式原版测试使用当次上游最新版。
 - 只有 request_id/ticker/analysis_date 匹配且 `status=success`、`runtime_readiness=remote_ready`、候选非空，才能声称原版本次真实运行。
 
-## TradingAgents 上游更新策略
+## TradingAgents 上游更新策略：Use-time Latest + Runtime Review
 
 ```text
-上游 main SHA 变化
+股票研究启动
   ↓
-cis-tradingagents-upstream-watch.yml 自动检测
+获取 TauricResearch/TradingAgents 当前 main SHA
   ↓
-upstream-status.json → review_required
+与 upstream-status.json 的 reviewed_sha 比较
   ↓
-人工/ChatGPT 审查 Agent / Prompt / Graph / Tool / Risk 变化
+SHA 相同 → 直接使用 CIS 已验证稳定方法论
+SHA 不同 → 读取相关 Agent / Prompt / Graph / Tool / Risk 变化
   ↓
-只吸收明确有价值且不破坏 CIS 质量门的变化
+ChatGPT 先做语义审查
   ↓
-更新 methodology + reviewed_sha
+有价值且兼容 → 可用于本次研究；需要固化时再更新 methodology + reviewed_sha
+无关/破坏 CIS 纪律 → 忽略，保留稳定基线
 ```
 
-禁止上游代码自动覆盖 CIS 方法论。
+不再使用定时 GitHub Actions 监控 TradingAgents。禁止上游代码自动覆盖 CIS 方法论。
 
 ## 专业金融方法
 
@@ -190,7 +192,7 @@ portfolio_context: 持仓、权重、成本、基准、约束、资金需求
 ## 执行顺序
 
 1. Intake：对象、问题、模式、期限、`as_of`。
-2. Runtime Guard：读取 GitHub 当前 CIS 与 TradingAgents 上游审查状态。
+2. Runtime Guard：读取 GitHub 当前 CIS；股票研究按 use-time 规则检查 TradingAgents 当前上游 SHA。
 3. Quant Pre-screen：仅大股票池/排名任务按需执行。
 4. Evidence：采集并登记事实、计算、假设、来源和限制。
 5. Core Research：ChatGPT 直接执行 TradingAgents Methodology。
@@ -241,6 +243,7 @@ portfolio_context: 持仓、权重、成本、基准、约束、资金需求
 
 - CIS 规则版本；
 - 本次使用 ChatGPT-native methodology / Quant / Regime / 原版 TradingAgents 的实际状态；
+- TradingAgents `upstream_check`：`current` / `reviewed_at_runtime` / `unavailable`（股票研究时）；
 - 数据截止时间；
 - Anthropic 专业 Skill 是否实际运行；
 - CIS 评分 coverage；
