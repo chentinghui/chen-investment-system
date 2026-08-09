@@ -26,8 +26,17 @@ on:
         options:
           - ollama
           - openai_compatible
+      provider_profile:
+        description: "Credential/endpoint profile"
+        required: true
+        default: "local_ollama"
+        type: choice
+        options:
+          - local_ollama
+          - nvidia
+          - custom
       backend_url:
-        description: "Required for openai_compatible; blank for Ollama"
+        description: "Custom HTTPS endpoint; NVIDIA may be blank"
         required: false
         type: string
       deep_model:
@@ -60,18 +69,21 @@ on:
         default: "Chinese"
         type: string
 
+# Default token is read-only. Only the final publisher job receives write access.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: cis-tradingagents-remote-v3
+  group: cis-tradingagents-remote-v4-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  analyze:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-
+    outputs:
+      upstream_sha: ${{ steps.preflight.outputs.upstream_sha }}
+      backend: ${{ steps.preflight.outputs.backend }}
+      provider_profile: ${{ steps.preflight.outputs.provider_profile }}
     steps:
       - name: Checkout CIS repository
         uses: actions/checkout@v6
@@ -89,6 +101,7 @@ jobs:
           INPUT_TICKER: ${{ inputs.ticker }}
           INPUT_ANALYSIS_DATE: ${{ inputs.analysis_date }}
           INPUT_BACKEND: ${{ inputs.backend }}
+          INPUT_PROVIDER_PROFILE: ${{ inputs.provider_profile }}
           INPUT_BACKEND_URL: ${{ inputs.backend_url }}
           INPUT_DEEP_MODEL: ${{ inputs.deep_model }}
           INPUT_QUICK_MODEL: ${{ inputs.quick_model }}
@@ -106,6 +119,7 @@ jobs:
               "ticker": os.environ["INPUT_TICKER"].strip().upper(),
               "analysis_date": os.environ["INPUT_ANALYSIS_DATE"].strip(),
               "backend": os.environ["INPUT_BACKEND"].strip(),
+              "provider_profile": os.environ["INPUT_PROVIDER_PROFILE"].strip(),
               "backend_url": os.environ.get("INPUT_BACKEND_URL", "").strip(),
               "deep_model": os.environ["INPUT_DEEP_MODEL"].strip(),
               "quick_model": os.environ.get("INPUT_QUICK_MODEL", "").strip(),
@@ -119,25 +133,96 @@ jobs:
           )
           PY
 
-      - name: Install current TradingAgents upstream
+      - name: Validate request and pin upstream SHA
+        id: preflight
         shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import importlib.util, json, os, subprocess
+          from pathlib import Path
+
+          path = Path("plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py")
+          spec = importlib.util.spec_from_file_location("cis_ta_remote", path)
+          module = importlib.util.module_from_spec(spec)
+          assert spec.loader is not None
+          spec.loader.exec_module(module)
+
+          request = json.loads(Path("runtime/tradingagents/request.json").read_text(encoding="utf-8"))
+          normalized = module.validate_request(request)
+          current_sha = subprocess.check_output(
+              ["git", "ls-remote", "https://github.com/TauricResearch/TradingAgents.git", "refs/heads/main"],
+              text=True,
+          ).split()[0]
+          status = json.loads(Path("runtime/tradingagents/upstream-status.json").read_text(encoding="utf-8"))
+          reviewed_sha = str(status.get("reviewed_sha") or "").strip()
+
+          # Secret-backed execution is allowed only for the exact reviewed upstream
+          # commit. A newly changed upstream may still be smoke-tested with zero-secret
+          # Ollama, but must be reviewed before any cloud credential is exposed to it.
+          if normalized["backend"] != "ollama" and current_sha != reviewed_sha:
+              raise SystemExit(
+                  "Security block: TradingAgents main differs from reviewed_sha. "
+                  "Review the new upstream commit before any secret-backed run."
+              )
+
+          out = Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a", encoding="utf-8") as fh:
+              fh.write(f"upstream_sha={current_sha}\n")
+              fh.write(f"backend={normalized['backend']}\n")
+              fh.write(f"provider_profile={normalized['provider_profile']}\n")
+          PY
+
+      - name: Upload validated request
+        uses: actions/upload-artifact@v4
+        with:
+          name: cis-ta-request-${{ github.run_id }}
+          path: runtime/tradingagents/request.json
+          if-no-files-found: error
+          retention-days: 1
+
+  analyze:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout CIS repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Download validated request
+        uses: actions/download-artifact@v4
+        with:
+          name: cis-ta-request-${{ github.run_id }}
+          path: runtime/tradingagents
+
+      - name: Install pinned TradingAgents upstream
+        shell: bash
+        env:
+          PINNED_SHA: ${{ needs.prepare.outputs.upstream_sha }}
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
           rm -rf /tmp/TradingAgents
-          git clone --depth 1 https://github.com/TauricResearch/TradingAgents.git /tmp/TradingAgents
-          echo "TRADINGAGENTS_UPSTREAM_SHA=$(git -C /tmp/TradingAgents rev-parse HEAD)" >> "$GITHUB_ENV"
+          git init /tmp/TradingAgents
+          git -C /tmp/TradingAgents remote add origin https://github.com/TauricResearch/TradingAgents.git
+          git -C /tmp/TradingAgents fetch --depth 1 origin "$PINNED_SHA"
+          git -C /tmp/TradingAgents checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/TradingAgents rev-parse HEAD)" = "$PINNED_SHA"
+          echo "TRADINGAGENTS_UPSTREAM_SHA=$PINNED_SHA" >> "$GITHUB_ENV"
           python -m pip install /tmp/TradingAgents
 
       - name: Prepare zero-secret Ollama backend when requested
+        if: needs.prepare.outputs.backend == 'ollama'
         shell: bash
         run: |
           set -euo pipefail
-          BACKEND=$(python -c 'import json; print(json.load(open("runtime/tradingagents/request.json")).get("backend", "ollama"))')
-          if [ "$BACKEND" != "ollama" ]; then
-            echo "Cloud/OpenAI-compatible backend requested; skipping Ollama setup."
-            exit 0
-          fi
           curl -fsSL https://ollama.com/install.sh | sh
           sudo systemctl stop ollama 2>/dev/null || true
           pkill -x ollama 2>/dev/null || true
@@ -151,30 +236,93 @@ jobs:
           QUICK_MODEL=$(python -c 'import json; r=json.load(open("runtime/tradingagents/request.json")); print(r.get("quick_model") or r.get("deep_model") or "qwen3:4b-instruct")')
           ollama pull "$DEEP_MODEL"
           if [ "$QUICK_MODEL" != "$DEEP_MODEL" ]; then ollama pull "$QUICK_MODEL"; fi
-          ollama list
 
-      - name: Run TradingAgents remote engine
-        id: tradingagents
+      - name: Run TradingAgents with Ollama (no cloud secret)
+        id: run_ollama
+        if: needs.prepare.outputs.backend == 'ollama'
+        continue-on-error: true
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py runtime/tradingagents/request.json runtime/tradingagents/result.json runtime/tradingagents/result.md
+
+      - name: Run TradingAgents with NVIDIA credential only
+        id: run_nvidia
+        if: needs.prepare.outputs.backend == 'openai_compatible' && needs.prepare.outputs.provider_profile == 'nvidia'
         continue-on-error: true
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          TRADINGAGENTS_API_KEY: ${{ secrets.TRADINGAGENTS_API_KEY }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py runtime/tradingagents/request.json runtime/tradingagents/result.json runtime/tradingagents/result.md
+
+      - name: Run TradingAgents with custom compatible credential only
+        id: run_custom
+        if: needs.prepare.outputs.backend == 'openai_compatible' && needs.prepare.outputs.provider_profile == 'custom'
+        continue-on-error: true
+        env:
           OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENAI_COMPATIBLE_API_KEY }}
           PYTHONUNBUFFERED: "1"
         run: |
           python plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py runtime/tradingagents/request.json runtime/tradingagents/result.json runtime/tradingagents/result.md
 
-      - name: Commit result back to main
+      - name: Ensure result artifact exists
         if: always()
         shell: bash
         run: |
           set -euo pipefail
+          if [ ! -f runtime/tradingagents/result.json ]; then
+            printf '%s\n' '{"status":"error","execution_status":"error","runtime_readiness":"remote_limited","evidence_audit_status":"not_run","research_quality":"rejected","error":"runner produced no result file"}' > runtime/tradingagents/result.json
+          fi
+          if [ ! -f runtime/tradingagents/result.md ]; then
+            printf '%s\n' '# TradingAgents Remote Result' '' 'Runner produced no Markdown report. See result.json.' > runtime/tradingagents/result.md
+          fi
+
+      - name: Upload result artifact for trusted publisher
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cis-ta-result-${{ github.run_id }}
+          path: |
+            runtime/tradingagents/result.json
+            runtime/tradingagents/result.md
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Surface TradingAgents failure
+        if: always() && ((needs.prepare.outputs.backend == 'ollama' && steps.run_ollama.outcome != 'success') || (needs.prepare.outputs.provider_profile == 'nvidia' && steps.run_nvidia.outcome != 'success') || (needs.prepare.outputs.provider_profile == 'custom' && steps.run_custom.outcome != 'success'))
+        run: exit 1
+
+  publish:
+    needs: [prepare, analyze]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout target CIS branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Download untrusted result as inert data
+        uses: actions/download-artifact@v4
+        with:
+          name: cis-ta-result-${{ github.run_id }}
+          path: /tmp/cis-ta-result
+
+      - name: Publish result without executing third-party code
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
           mkdir -p runtime/tradingagents/results
-          REQUEST_ID=$(python -c 'import json; print(json.load(open("runtime/tradingagents/request.json")).get("request_id", "unknown"))')
+          cp /tmp/cis-ta-result/result.json runtime/tradingagents/result.json
+          cp /tmp/cis-ta-result/result.md runtime/tradingagents/result.md
+          REQUEST_ID=$(python -c 'import json; print(json.load(open("runtime/tradingagents/result.json")).get("request_id", "unknown"))')
           SAFE_ID=$(printf '%s' "$REQUEST_ID" | tr -cd 'A-Za-z0-9._-')
           if [ -z "$SAFE_ID" ]; then SAFE_ID=unknown; fi
-          if [ ! -f runtime/tradingagents/result.json ]; then printf '%s\n' '{"status":"error","execution_status":"error","runtime_readiness":"remote_limited","evidence_audit_status":"not_run","research_quality":"rejected","error":"runner produced no result file"}' > runtime/tradingagents/result.json; fi
-          if [ ! -f runtime/tradingagents/result.md ]; then printf '%s\n' '# TradingAgents Remote Result' '' 'Runner produced no Markdown report. See result.json.' > runtime/tradingagents/result.md; fi
           cp runtime/tradingagents/result.json "runtime/tradingagents/results/${SAFE_ID}.json"
           cp runtime/tradingagents/result.md "runtime/tradingagents/results/${SAFE_ID}.md"
           git config user.name "github-actions[bot]"
@@ -182,10 +330,6 @@ jobs:
           git add runtime/tradingagents/result.json runtime/tradingagents/result.md runtime/tradingagents/results/
           if ! git diff --cached --quiet; then
             git commit -m "chore: store TradingAgents remote result ${SAFE_ID}"
-            git pull --rebase origin main
-            git push origin HEAD:main
+            git pull --rebase origin "$TARGET_BRANCH"
+            git push origin HEAD:"$TARGET_BRANCH"
           fi
-
-      - name: Surface TradingAgents failure
-        if: steps.tradingagents.outcome != 'success'
-        run: exit 1
