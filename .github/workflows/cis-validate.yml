@@ -48,7 +48,9 @@ jobs:
         run: |
           python -m py_compile \
             integrations/lean/cis_lean_adapter.py \
-            integrations/lean/test_cis_lean_adapter.py
+            integrations/lean/test_cis_lean_adapter.py \
+            integrations/lean/strategies/qqq_sma20_50/strategy_logic.py \
+            integrations/lean/strategies/qqq_sma20_50/test_strategy_logic.py
 
       - name: Compile Optional Research Tooling
         run: |
@@ -73,6 +75,11 @@ jobs:
             -s integrations/lean \
             -p "test_*.py" \
             -v
+
+      - name: Run LEAN strategy logic unit tests
+        run: |
+          cd integrations/lean/strategies/qqq_sma20_50
+          python -m unittest -v test_strategy_logic.py
 
       - name: Run Optional Research Tooling unit tests
         run: |

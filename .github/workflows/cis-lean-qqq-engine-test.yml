@@ -1,0 +1,243 @@
+name: CIS LEAN QQQ Engine Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      execution_target:
+        description: "Execution target"
+        required: true
+        default: "github-arm64"
+        type: choice
+        options:
+          - github-arm64
+          - self-hosted-cis-lean
+      refresh_lean_image:
+        description: "Force-refresh the pinned LEAN image"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  # Pin the engine build for reproducibility. Update deliberately after review.
+  LEAN_IMAGE: quantconnect/lean:17948
+  QQQ_DATA_CACHE_KEY: qqq-adjusted-daily-v1-2026-08-07
+
+jobs:
+  lean-engine-backtest:
+    # github-arm64 is the fast zero-setup fallback. A self-hosted runner should
+    # carry the custom label `cis-lean` and keep the pinned image cached locally.
+    runs-on: ${{ inputs.execution_target == 'self-hosted-cis-lean' && 'cis-lean' || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Runtime preflight
+        shell: bash
+        run: |
+          python --version
+          docker version
+          echo "runner_arch=$(uname -m)"
+          echo "lean_image=$LEAN_IMAGE"
+
+      - name: Test strict crossover logic
+        run: |
+          cd integrations/lean/strategies/qqq_sma20_50
+          python -m unittest -v test_strategy_logic.py
+
+      - name: Restore cached QQQ test dataset
+        id: qqq-data-cache
+        uses: actions/cache@v4
+        with:
+          path: .tmp_lean/data/custom/qqq_sma20_50.csv
+          key: ${{ env.QQQ_DATA_CACHE_KEY }}
+
+      - name: Build public adjusted QQQ test dataset
+        if: steps.qqq-data-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p .tmp_lean/data/custom
+          python - <<'PY'
+          import csv
+          import json
+          import time
+          import urllib.parse
+          import urllib.request
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          def unix(date_text):
+              return int(datetime.strptime(date_text, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+
+          params = urllib.parse.urlencode({
+              "period1": unix("2019-09-01"),
+              "period2": unix("2026-08-08"),
+              "interval": "1d",
+              "events": "history",
+              "includeAdjustedClose": "true",
+          })
+
+          payload = None
+          errors = []
+          for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
+              url = f"https://{host}/v8/finance/chart/QQQ?{params}"
+              for attempt in range(3):
+                  try:
+                      request = urllib.request.Request(url, headers={"User-Agent": "CIS-LEAN-Engine-Test/1.1"})
+                      with urllib.request.urlopen(request, timeout=30) as response:
+                          payload = json.load(response)["chart"]["result"][0]
+                      break
+                  except Exception as exc:
+                      errors.append(f"{host} attempt {attempt + 1}: {type(exc).__name__}: {exc}")
+                      time.sleep(attempt + 1)
+              if payload is not None:
+                  break
+          if payload is None:
+              raise SystemExit("Yahoo QQQ download failed: " + " | ".join(errors))
+
+          timestamps = payload["timestamp"]
+          quote = payload["indicators"]["quote"][0]
+          adjclose = payload["indicators"]["adjclose"][0]["adjclose"]
+
+          rows = []
+          for ts, opn, high, low, close, adj in zip(
+              timestamps,
+              quote["open"], quote["high"], quote["low"], quote["close"], adjclose
+          ):
+              if None in (opn, high, low, close, adj) or close == 0:
+                  continue
+              date = datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
+              factor = float(adj) / float(close)
+              rows.append([
+                  date,
+                  float(opn) * factor,
+                  float(high) * factor,
+                  float(low) * factor,
+                  float(adj),
+              ])
+
+          if not rows or rows[-1][0] != "2026-08-07":
+              raise SystemExit(f"QQQ dataset does not end on 2026-08-07: {rows[-1][0] if rows else 'empty'}")
+
+          output = Path(".tmp_lean/data/custom/qqq_sma20_50.csv")
+          output.parent.mkdir(parents=True, exist_ok=True)
+          with output.open("w", newline="", encoding="utf-8") as f:
+              writer = csv.writer(f)
+              writer.writerow(["date", "open", "high", "low", "close"])
+              writer.writerows(rows)
+          print(f"dataset rows={len(rows)} start={rows[0][0]} end={rows[-1][0]}")
+          PY
+
+      - name: Build LEAN runtime config
+        run: |
+          mkdir -p .tmp_lean/results
+          python -m pip install --quiet json5
+          python - <<'PY'
+          import json
+          import json5
+          import urllib.request
+          from pathlib import Path
+
+          # This file is small; the expensive dependency is the LEAN image.
+          # Keep using the official config as the compatibility baseline.
+          url = "https://raw.githubusercontent.com/QuantConnect/Lean/master/Launcher/config.json"
+          with urllib.request.urlopen(url, timeout=30) as response:
+              config = json5.loads(response.read().decode("utf-8"))
+
+          config["environment"] = "backtesting"
+          config["algorithm-type-name"] = "QqqSma20Sma50SmokeAlgorithm"
+          config["algorithm-language"] = "Python"
+          config["algorithm-location"] = "../../../Algorithm.Python/CIS_QQQ_SMOKE/smoke_main.py"
+          config["data-folder"] = "../../../Data/"
+          config["python-additional-paths"] = ["/Lean/Algorithm.Python/CIS_QQQ_SMOKE"]
+          config["force-exchange-always-open"] = True
+          config["transaction-log"] = "/Lean/Results/transactions.csv"
+          config["results-destination-folder"] = "/Lean/Results"
+          config["job-user-id"] = "0"
+          config["api-access-token"] = ""
+          config["job-organization-id"] = ""
+
+          Path(".tmp_lean/config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+          PY
+
+      - name: Prepare pinned LEAN image
+        shell: bash
+        env:
+          REFRESH_LEAN_IMAGE: ${{ inputs.refresh_lean_image }}
+        run: |
+          if [ "$REFRESH_LEAN_IMAGE" = "true" ]; then
+            echo "Refreshing $LEAN_IMAGE by explicit request"
+            docker pull "$LEAN_IMAGE"
+          elif docker image inspect "$LEAN_IMAGE" >/dev/null 2>&1; then
+            echo "Reusing cached $LEAN_IMAGE"
+          else
+            echo "$LEAN_IMAGE is not cached; pulling once"
+            docker pull "$LEAN_IMAGE"
+          fi
+          docker image inspect "$LEAN_IMAGE" --format 'image={{.RepoTags}} size={{.Size}} id={{.Id}}'
+
+      - name: Run actual QuantConnect LEAN engine
+        shell: bash
+        run: |
+          docker run --rm \
+            -v "$PWD/integrations/lean/strategies/qqq_sma20_50:/Lean/Algorithm.Python/CIS_QQQ_SMOKE:ro" \
+            -v "$PWD/.tmp_lean/data/custom:/Lean/Data/custom:ro" \
+            -v "$PWD/.tmp_lean/results:/Lean/Results" \
+            -v "$PWD/.tmp_lean/config.json:/Lean/Launcher/bin/Debug/config.json:ro" \
+            "$LEAN_IMAGE" \
+            --results-destination-folder /Lean/Results | tee .tmp_lean/lean.log
+
+      - name: Parse LEAN result through CIS adapter
+        shell: bash
+        run: |
+          RESULT=$(find .tmp_lean/results -type f -name '*.json' ! -name '*order-events.json' | head -n 1)
+          if [ -z "$RESULT" ]; then
+            echo "No LEAN result JSON found"
+            find .tmp_lean/results -maxdepth 2 -type f -print || true
+            exit 1
+          fi
+          python integrations/lean/cis_lean_adapter.py parse --result "$RESULT" > .tmp_lean/cis-normalized.json
+          cat .tmp_lean/cis-normalized.json
+
+      - name: Assert fixed behavior
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          normalized = json.loads(Path(".tmp_lean/cis-normalized.json").read_text())
+          if normalized["execution_status"] != "success":
+              raise SystemExit(f"adapter did not report success: {normalized}")
+          raw = normalized["statistics_raw"]
+          expected = {
+              "CIS Engine Harness": "QuantConnect LEAN custom-data smoke",
+              "CIS First Buy Signal Date": "2020-04-27",
+              "CIS First Buy Execution Date": "2020-04-28",
+          }
+          for key, value in expected.items():
+              if raw.get(key) != value:
+                  raise SystemExit(f"{key}: expected {value!r}, got {raw.get(key)!r}")
+          if int(raw.get("CIS Strict Cross Executions", "0")) < 20:
+              raise SystemExit(f"too few strict crossover executions: {raw.get('CIS Strict Cross Executions')}")
+          print("STRICT_CROSS_ASSERTIONS_PASSED")
+          PY
+
+      - name: Upload audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cis-lean-qqq-sma20-50-engine-test
+          path: |
+            .tmp_lean/lean.log
+            .tmp_lean/cis-normalized.json
+            .tmp_lean/results/
+          if-no-files-found: warn
+          retention-days: 7
