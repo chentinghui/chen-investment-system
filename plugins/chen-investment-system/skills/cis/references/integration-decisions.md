@@ -2,122 +2,234 @@
 
 As-of: 2026-08-09. Reverify repository state, licenses, dependencies, paths, account requirements and quality before changing these decisions.
 
-## Current architecture — CIS 0.4.5
+## Current architecture — CIS 0.4.5 Control Plane v2
 
-- `cis` is the sole user-facing entrypoint and final quality-control layer.
-- `TauricResearch/TradingAgents` methodology is the default general-purpose stock/issuer research and external decision-candidate method.
-- Anthropic `financial-services` is the preferred professional Skill upstream for DCF, Comps, three-statement models, earnings, model audit/update, competitive analysis, thesis tracking and catalysts.
-- `QuantConnect/Lean` is the accepted external strategy-level quant/backtest engine; CIS owns only the adapter and validation contract.
-- CIS-owned rules remain authoritative for evidence, scoring, trading framework, ETF/QDII, portfolio context and final Chinese posture.
-- `stock-research-assistant` is only a legacy alias that hands off to CIS.
+- `cis` remains the sole user-facing entrypoint and final quality-control layer.
+- CIS no longer tries to make one framework do every job. It routes each task to the strongest specialist layer with the least overlap.
+- `OpenBB-finance/OpenBB` is accepted as the preferred external data-fabric layer when callable.
+- `TauricResearch/TradingAgents` remains the default general-purpose multi-agent stock research methodology.
+- `AI4Finance-Foundation/FinRobot` is accepted as the preferred deterministic financial-modeling engine for DCF/Comps/DDM/LBO/WACC/Monte Carlo and related equity-research workflows when callable.
+- `microsoft/qlib` is accepted as the preferred external AI Quant / factor / ML research platform.
+- `microsoft/RD-Agent` is accepted as the autonomous Quant R&D engine for factor/model discovery and iterative experiment generation.
+- `QuantConnect/Lean` remains the accepted external event-driven strategy/backtest validation engine.
+- Anthropic Financial Services remains an optional professional-method upstream and deep second opinion, not a reason to duplicate successful FinRobot work.
+- CIS-owned rules remain authoritative for evidence, risk, scoring, tactical price discipline, ETF/QDII, portfolio context and final Chinese posture.
+
+Machine-readable registry:
+
+```text
+references/external-engine-registry.json
+```
+
+Deterministic route planner:
+
+```text
+scripts/route_cis.py
+```
 
 ## Accepted external capabilities
 
-### TradingAgents — accepted as default research core methodology
+### OpenBB — accepted data fabric
 
-Accepted for:
+Use for:
 
-- fundamental / technical / news / sentiment analyst team;
-- bull/bear debate;
-- research manager synthesis;
-- trader proposal;
-- risk-management debate;
-- portfolio-manager external candidate decision when original runtime is explicitly executed;
-- persistent decision-log/reflection when the installed version provides it.
+- market data;
+- fundamentals;
+- macro data;
+- multi-provider data integration;
+- standardized downstream inputs for research/quant/modeling.
 
 Boundary:
 
-- Portfolio Manager output is `external_decision_candidate`, never the final CIS action.
-- TradingAgents technical output does not replace CIS four-layer trading rules.
-- TradingAgents risk output does not replace CIS evidence audit, portfolio data gate or ETF/QDII rules.
-- Code freshness does not imply real-time data freshness.
-- Historical analysis must preserve `analysis_date` and prevent look-ahead leakage.
+- OpenBB does not become a final source-of-truth override;
+- issuer filings, regulator filings and direct exchange sources retain higher authority when conflicts are material;
+- provider/as-of/currency/unit must remain traceable;
+- OpenBB has no decision authority.
 
-Verification recorded 2026-08-09:
+### TradingAgents — accepted default general research methodology
 
-- upstream `main` exists;
-- README reports v0.3.1 (2026-07);
-- README documents package use via `TradingAgentsGraph(...).propagate(ticker, date)`;
-- repository LICENSE is Apache License 2.0.
+Accepted for:
 
-### Anthropic Financial Services — accepted as professional-method upstream
+- fundamental / technical / news / sentiment research;
+- bull/bear debate;
+- research-manager synthesis;
+- trader / risk / portfolio perspectives;
+- original-runtime external candidate output when explicitly executed.
 
-Use the smallest relevant Skill. Preserve source/as-of discipline and adapt Claude/Cowork/MCP/Office-specific instructions to callable tools in the current environment.
+Boundary:
 
-Boundary: it supplies professional subproblem methods, not final CIS actions.
+- Portfolio Manager output is `external_decision_candidate`, never final CIS action;
+- original runtime is not required for ordinary analysis;
+- technical/risk output does not replace CIS tactical, Evidence, Risk, ETF or Portfolio gates.
 
-### QuantConnect LEAN — accepted as external quant/backtest engine
+### FinRobot — accepted deterministic financial-modeling engine
+
+Accepted for:
+
+- DCF;
+- comparable-company analysis;
+- DDM/LBO;
+- WACC;
+- Monte Carlo valuation;
+- earnings/modeling workflows;
+- IC-style research output where the runtime is callable.
+
+Boundary:
+
+- prefer code-calculated numeric outputs and explicit assumptions/provenance;
+- do not average conflicting target prices;
+- reconcile WACC, growth, terminal value, margins, capex, peer set and accounting inputs;
+- FinRobot agent/judge output has no final CIS action authority.
+
+Fallback: Anthropic Financial Services or transparent CIS calculations. Fallback must be labeled and must never be reported as a FinRobot run.
+
+### Microsoft Qlib — accepted Quant/ML research engine
+
+Accepted for:
+
+- factor research;
+- ML signal/model research;
+- quant screening;
+- portfolio optimization;
+- quant research backtests and model evaluation.
+
+Boundary:
+
+- Qlib owns research depth; local Quant tooling is only fallback/sanity tooling;
+- all research remains subject to point-in-time data, OOS, leakage and robustness review;
+- Qlib output cannot automatically modify CIS production score weights or publish actions.
+
+### Microsoft RD-Agent — accepted autonomous Quant R&D engine
+
+Accepted for:
+
+- factor discovery;
+- factor/model joint optimization;
+- automatic research loops;
+- experiment generation/implementation.
+
+Boundary:
+
+- use only for R&D intent, not routine single-stock questions;
+- output is always experimental first;
+- promotion path is `RD-Agent → Qlib → LEAN → CIS Backtest Validation → policy review`;
+- no automatic production promotion.
+
+### QuantConnect LEAN — accepted strategy-level validation engine
 
 Accepted for:
 
 - event-driven strategy backtests;
 - technical/trend/position-sizing rule validation;
-- stocks / ETFs / options strategy paths when the LEAN project and data support them;
-- order, fee, portfolio path and strategy-performance statistics;
-- future strategy-level validation before a new CIS rule is promoted from `experimental`.
+- stock/ETF/options strategy paths;
+- order, fee, slippage and portfolio-path realism.
 
 Implementation boundary:
 
 - upstream source stays external at `QuantConnect/Lean`;
-- do **not** vendor, copy or git-submodule LEAN into CIS;
-- CIS maintains `integrations/lean/cis_lean_adapter.py` and `references/quantconnect-lean.md`;
-- adapter v1 uses the official Lean CLI local-backtest path plus result-JSON parsing;
+- CIS owns only adapter/contract/validation logic;
 - `execution_status=success` is not `research_quality=accepted`;
-- LEAN has `decision_authority=none` and cannot change production rules automatically;
+- LEAN has `decision_authority=none`;
 - current integration does not enable live trading or Broker execution.
 
-As of 2026-08-09, QuantConnect's official Lean CLI documentation states that local engine commands use Docker and the CLI requires membership in a paid organization tier. Account, organization workspace, data licensing and credentials remain external to CIS.
+### Anthropic Financial Services — accepted optional professional method upstream
 
-### Buffett — optional external lens
+Use only the smallest relevant skill and only when the environment can actually access it.
 
-Useful for business quality, management, moat, capital allocation and long-term owner discipline. It does not replace TradingAgents or Anthropic professional models.
+Good uses:
+
+- model audit;
+- earnings deep-dive;
+- competitive analysis;
+- thesis tracking;
+- catalyst analysis;
+- deep second opinion when the method is genuinely independent.
+
+Do not run a duplicate DCF merely because another LLM skill exists after FinRobot already produced a traceable deterministic model.
+
+## Specialist division of labor
+
+```text
+OpenBB       = data integration
+TradingAgents= general investment research
+FinRobot     = deterministic financial modeling
+Qlib         = Quant / ML research
+RD-Agent     = Quant R&D discovery loop
+LEAN         = execution-realistic strategy validation
+CIS          = evidence/risk/score/trade discipline/final decision
+```
+
+This is the default architectural doctrine.
+
+## Quant research promotion pipeline
+
+```text
+Hypothesis
+  ↓
+RD-Agent (optional discovery/implementation)
+  ↓
+Qlib research / independent evaluation
+  ↓
+LEAN event-driven validation
+  ↓
+CIS Backtest Validation
+  ↓
+manual/policy review
+  ↓
+production rule
+```
+
+A factor/model/threshold may enter the pipeline without RD-Agent if it comes from another source, but it may not skip independent research and validation merely because the proposal came from a well-known project.
 
 ## CIS ownership boundary
 
 External systems do **not** replace:
 
-- Runtime Guard and GitHub `main` verification;
+- Runtime Guard and upstream identity checks;
 - evidence gate, source grades and as-of discipline;
-- look-ahead-bias checks;
-- eight-dimension CIS scoring engine and coverage thresholds;
+- look-ahead-bias and stale-data checks;
+- eight-dimension CIS scoring and coverage thresholds;
 - four-layer trading framework;
-- profit-taking + defensive-stop dual sell framework;
+- profit-taking + defensive-stop discipline;
 - cross-border ETF/QDII premium discipline;
 - portfolio-data gate;
-- personal investor rules;
+- investor-specific constraints;
 - final Chinese synthesis, falsification conditions and review lifecycle.
-
-LEAN additionally does not replace the CIS Backtest Validation Policy. Its outputs remain historical evidence subject to bias, execution-realism, out-of-sample and robustness review.
 
 ## Fallback policy
 
-CIS self-authored expert agents are retained, but only as:
-
-- fallback adapters when TradingAgents cannot run;
-- conflict validators when external outputs materially disagree;
-- CIS-specific adapters for evidence, trading and portfolio rules.
-
-They should not duplicate a successful TradingAgents run by default.
-
-For quantitative validation:
-
-- LEAN is preferred for strategy-level event-driven backtests;
-- `extensions/research_tooling/backtest_factor_strategy.py` remains a lightweight cross-sectional baseline evaluator;
-- do not silently substitute the baseline evaluator when the user explicitly asked for LEAN.
+- OpenBB unavailable → primary/direct/public sources; disclose provider differences.
+- TradingAgents runtime unavailable → reviewed ChatGPT-native TradingAgents methodology.
+- FinRobot unavailable → Anthropic Financial Services or transparent CIS calculation.
+- Qlib unavailable → local Quant extension only for limited screening/sanity; never call it equivalent Qlib.
+- RD-Agent unavailable → report R&D stage not run; no silent equivalent substitute.
+- LEAN unavailable → if explicitly requested, report unavailable/error; do not substitute baseline backtest.
+- Anthropic unavailable → omit that enhancement without blocking unrelated routes.
 
 ## Not bundled / deferred
 
 | Candidate | Decision | Reason |
 |---|---|---|
-| TradingAgents | External dependency/methodology; do not vendor full source by default | Stay current with active upstream; use stable methodology/adapter and verify runtime. |
-| Anthropic `financial-services` | Live upstream preferred; snapshot optional | Prefer current Skill files; vendor only with upstream SHA, date, attribution and license review. |
-| QuantConnect LEAN | **Accepted external quant engine; adapter only** | Adds strategy-level backtest capability without turning CIS into a trading-engine fork. |
-| `agi-now/buffett-skills` | External optional dependency | License status must be reverified before redistribution. |
-| FinRobot | Defer | Large functional overlap with TradingAgents + Anthropic; avoid duplicate decision/model stacks. |
-| Microsoft Qlib / RD-Agent | Defer | LEAN now owns the default strategy-level quant/backtest role; add ML research only when a distinct need exists. |
-| NautilusTrader | Defer | Overlaps LEAN's trading-engine role; avoid maintaining two default execution stacks. |
-| OpenBB | Future optional data aggregation layer | Useful as data infrastructure; not needed as a decision engine. |
+| TradingAgents | Accepted external methodology/runtime; do not vendor full source | Strong general multi-agent research, but final authority remains CIS. |
+| OpenBB | **Accepted external data fabric** | Adds broad provider/data integration without becoming a decision engine. |
+| FinRobot | **Accepted external financial-modeling engine** | Distinct deterministic modeling value; use task-specific routing to avoid overlap. |
+| Microsoft Qlib | **Accepted external Quant/ML research engine** | Distinct factor/model/portfolio research depth. |
+| Microsoft RD-Agent | **Accepted external Quant R&D engine** | Distinct automated discovery/implementation capability; gated before production. |
+| QuantConnect LEAN | **Accepted external strategy validation engine** | Distinct event-driven execution/backtest role. |
+| Anthropic Financial Services | Accepted optional method upstream | Useful for professional methods and independent deep review. |
+| Vibe-Trading | Optional/future adapter only | Broad integration convenience overlaps existing specialist engines; no reason to replace them. |
+| NautilusTrader | Defer | Overlaps LEAN's default execution/backtest role. |
+| `agi-now/buffett-skills` | Optional lens | Useful philosophy lens; not a core engine. |
 
-## Admission standard
+## Admission standard for future modules
 
-Accept a future module only when it adds a non-overlapping capability, has callable dependencies, preserves source provenance and dates, has a clear failure mode, fits inside the CIS control envelope, and passes representative forward tests.
+Accept a future module only when it adds a non-overlapping capability and has:
+
+1. identifiable upstream and license;
+2. callable runtime/dependencies;
+3. stable input/output contract;
+4. explicit data provenance/as-of semantics;
+5. explicit failure mode;
+6. no final CIS action authority;
+7. representative validation;
+8. a clear place in the route graph that does not duplicate an existing specialist without reason.

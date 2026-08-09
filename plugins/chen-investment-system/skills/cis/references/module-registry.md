@@ -1,94 +1,168 @@
-# CIS 0.4.5 模块登记表
+# CIS 0.4.5 模块登记表（Control Plane v2）
 
-CIS 采用 **Core Analysis + External Engines + Optional Research Tooling** 分层，避免把筛选、回测、记录和绩效系统塞进日常单股分析链。
+CIS 采用 **Core Control + External Specialist Engines + Optional Local Tooling** 三层结构。核心原则是：**CIS 自己只做控制、质量门、评分与最终裁决；成熟外部项目负责各自最专业的工作。**
+
+## 1. CIS Core
 
 | 模块 | 作用 | 默认状态 | 所属层 | 最终动作权 |
 |---|---|---|---|---|
-| CIS Control Layer | 受理、Runtime Guard、最终中文结论 | `installed` | **Core** | **有** |
-| ChatGPT-native TradingAgents Methodology | 基本面、技术、新闻、情绪、多空反证、Trader/Risk视角 | `default_methodology` | **Core** | 无 |
-| TradingAgents TTL Checker | 7天缓存式上游 SHA 检查 | `installed` | **Core Runtime** | 无 |
+| CIS Control Layer | Intake、任务标准化、路由、冲突仲裁、最终中文结论 | `installed` | **Core** | **有，唯一** |
+| Deterministic Route Planner | 根据 intent/asset/mode 生成最少充分路由 | `installed` | **Core Control** | 无 |
+| External Engine Registry | 外部项目能力、职责、fallback、权限登记 | `installed` | **Core Control** | 无 |
 | Evidence Audit | 来源、时效、新鲜度、前视偏差、冲突 | `fail_closed_gate` | **Core** | 质量门 |
 | Risk Review | 尾部风险、论点失效、集中度/流动性 | `fail_closed_gate` | **Core** | 质量门 |
 | Critical Dimension Gate | 按任务确保关键维度存在 | `installed` | **Core** | 质量门 |
-| Tactical Context Checks | Price Context + Catalyst/Event Review 完成检查 | `installed` | **Core, tactical** | 质量门 |
-| CIS Scoring | 八维加权 + coverage；短线仍保持 Research Grade 与交易赔率分离 | `production_heuristic_pending_calibration` | **Core** | 无单独动作权 |
-| Market Regime Layer | profile化 risk_on / neutral / risk_off + fresh-signal filtering | `experimental` | **Core, 按需** | 无 |
-| Price / Session Guard | US-equity common session baseline、quote observation session、freshness、last-close session 校验 | `installed` | **Core, tactical** | 质量门 |
-| Tactical R/R Gate | Entry/Stop Type/Target/Chase Limit/RR + persistent Setup Lifecycle | `installed_baseline` | **Core, tactical** | 质量门 |
-| Trading Framework | 趋势→价格→成交→风险；止盈+止损 | `installed` | **Core** | 质量门 |
+| Tactical Context Checks | Price Context + Catalyst/Event Review | `installed` | **Core, tactical** | 质量门 |
+| CIS Scoring | 八维加权 + coverage；Research Grade 与 Trade Readiness 分离 | `production_heuristic_pending_calibration` | **Core** | 无单独动作权 |
+| Market Regime Layer | risk_on / neutral / risk_off 环境层 | `experimental` | **Core, 按需** | 无 |
+| Price / Session Guard | US-equity session + quote freshness | `installed` | **Core, tactical** | 质量门 |
+| Tactical R/R Gate | Entry / Stop / Target / Chase / Setup lifecycle | `installed_baseline` | **Core, tactical** | 质量门 |
+| Trading Framework | 趋势→价格→成交→风险 | `installed` | **Core** | 质量门 |
 | ETF / QDII Gate | 产品身份、溢价、申赎、时差、流动性 | `installed` | **Core** | 质量门 |
 | Portfolio Gate | 成本、权重、集中度、约束、资金需求 | `installed` | **Core, 按需** | 质量门 |
-| Anthropic Financial Services | DCF、Comps、财报、模型、竞争、论点/催化剂 | `upstream_preferred` | **External, 按需** | 无 |
-| Original TradingAgents Runtime | 官方 Python 多 Agent 运行；secret-backed 仅 reviewed SHA | `explicit_test_only` | **External test** | 无 |
-| QuantConnect LEAN | 首选策略级事件驱动回测；订单、费用、持仓路径和策略统计 | `external_optional` | **External quant, 按需** | 无 |
-| Quant Factor Ranking Engine | 大股票池候选排序；同一 as_of、ticker 唯一、最小横截面观测 | `experimental` | **Extension** | 无 |
-| Baseline Backtest Evaluator | `date,ticker,score,forward_return` 横截面因子/Top-N sanity check | `experimental_baseline` | **Extension** | 无 |
-| Prediction / Evaluation | 可选研究记录、结果和校准；默认5/20/60交易日；公开 allowlist | `experimental_optional` | **Extension** | 无 |
 
-外部 LEAN 适配层位于：
+确定性路由文件：
 
 ```text
-integrations/lean/
+references/external-engine-registry.json
+scripts/route_cis.py
 ```
 
-外围研发工具统一位于：
+## 2. Accepted External Specialist Engines
+
+| 外部项目 | CIS 定位 | 默认触发 | 状态 | 最终动作权 |
+|---|---|---|---|---|
+| **OpenBB** | 数据基础设施 / provider 聚合 | 行情、基本面、宏观、多源数据 | `accepted_external_lazy` | 无 |
+| **TradingAgents** | 通用多 Agent 投资研究 | 一般股票研究、多空辩论、交易假设 | `accepted_default_methodology` | 无 |
+| **FinRobot** | 确定性财务模型 / 估值 | DCF、Comps、DDM、LBO、WACC、Monte Carlo、Earnings/IC | `accepted_external_lazy` | 无 |
+| **Microsoft Qlib** | AI Quant / 因子 / ML / 组合优化 | screening、factor/model research、quant research | `accepted_external_lazy` | 无 |
+| **Microsoft RD-Agent** | 自动量化研发 | 新因子发现、因子-模型联合优化、实验生成 | `accepted_external_lazy` | 无 |
+| **QuantConnect LEAN** | 事件驱动策略级验证 | 策略回测、费用/滑点/订单/持仓路径 | `accepted_external_lazy` | 无 |
+| Anthropic Financial Services | 专业方法 / second opinion | deep、模型审计、Earnings/Competitive/Thesis | `accepted_optional_method_upstream` | 无 |
+
+### 外部引擎的权限语义
 
 ```text
-extensions/research_tooling/
+OpenBB       = data authority only
+TradingAgents= research candidate only
+FinRobot     = model evidence only
+Qlib         = quant research evidence only
+RD-Agent     = experimental R&D candidate only
+LEAN         = strategy validation evidence only
+Anthropic    = specialist method evidence only
+CIS          = final decision authority
 ```
 
-## 路由边界
+所有外部项目的 BUY/SELL/HOLD、target price、score、portfolio action 都只能作为候选输入。
 
-- 日常单股分析：只要求 Core；
-- 短线/具体买点：Core 内增加 Price/Session Guard + Quote Freshness + Tactical R/R Gate；
-- 大股票池/Top N：按需启用 Quant Extension；
-- 可执行交易规则/策略有效性验证：首选 **QuantConnect LEAN**；
-- 仅横截面 score/forward-return sanity check：可使用 Baseline Backtest Evaluator；
-- 用户明确要求记录、复盘或校准：按需启用 Prediction/Evaluation Extension；
-- External/Extension 故障不得阻塞 Core；
-- 外部量化结果不能自动改生产评分权重或发布最终买卖动作。
+## 3. 专业职责边界
 
-## QuantConnect LEAN 状态边界
+### OpenBB
 
-LEAN 由 CIS 外部独立维护，不 vendor、不复制源码、不作为 git submodule。CIS 只维护：
+负责“拿数据”，不负责“替 CIS 做最终判断”。数据发生重大冲突时仍回到 primary source / issuer filing / exchange / regulator source。
+
+### TradingAgents
+
+负责基本面、技术、新闻、情绪、多空反证、Research Manager/Trader/Risk/Portfolio 等通用多角色研究。原版 runtime 的 Portfolio Manager 结论记为 `external_decision_candidate`。
+
+### FinRobot
+
+负责需要确定性金融计算和透明假设的专业问题。CIS 不再优先让 LLM 自己重复心算完整 DCF/Comps。
+
+### Qlib
+
+负责 AI/ML Quant 研究、因子研究、组合优化、量化筛选和模型研究。仓库本地 `quant_factor_engine.py` 只保留为轻量 fallback / sanity check。
+
+### RD-Agent
+
+负责**研究研发**而不是日常投资问答。它可以提出并实现新因子/模型，但不能把实验结果直接升级到生产 CIS。
+
+### LEAN
+
+负责事件驱动策略级历史验证、订单模型、费用、滑点、持仓路径和策略统计。它不替代基本面、估值、新闻或 CIS 风险门。
+
+## 4. 外部项目组合关系
+
+最重要的量化研发链：
 
 ```text
-integrations/lean/cis_lean_adapter.py
-references/quantconnect-lean.md
+RD-Agent
+   ↓ 发现/实现候选因子与模型
+Qlib
+   ↓ Quant/ML 独立研究与评估
+LEAN
+   ↓ 事件驱动 / execution-realistic 验证
+CIS Backtest Validation
+   ↓
+CIS policy review
 ```
 
-状态分层：
+最重要的股票研究链：
 
 ```text
-execution_status = success | invalid_input | unavailable | error
-runtime_readiness = ready | lean_cli_missing | docker_missing | unavailable
-research_quality = unreviewed
+OpenBB / primary sources
+        ↓
+TradingAgents
+        ↓
+FinRobot（需要专业估值/模型时）
+        ↓
+Evidence + Risk + CIS Score
+        ↓
+CIS final
 ```
 
-`execution_status=success` 只证明本次 LEAN 回测完成并解析出结果，不证明策略无偏差、稳健或适合实盘。最终仍受 `backtest-validation.md` 约束。
+## 5. Optional Local Research Tooling
 
-当前集成只做回测/结果解析，**不启用 LEAN live trading 或 Broker 自动执行**。
+位于 `extensions/research_tooling/`：
 
-## 0.4.5 安全边界
+| 模块 | 主要职责 | 状态 |
+|---|---|---|
+| Quant Factor Ranking | 轻量大股票池 point-in-time 排序 | `experimental_fallback` |
+| Baseline Backtest Evaluator | `score → forward_return` 横截面 sanity check | `experimental_baseline` |
+| Prediction / Evaluation | 研究记录、结果与校准诊断 | `experimental_optional` |
 
-Original TradingAgents Remote Runner 分为：
+这些工具的定位从“主要 Quant 能力”下调为：**外部 Qlib/LEAN 不可用时的有限 fallback，或用于轻量 CI/sanity check。**
+
+不得声称：
+
+- local quant extension 等价于 Qlib；
+- baseline evaluator 等价于 LEAN；
+- Prediction/Evaluation 可以自动优化生产评分。
+
+## 6. 路由边界
+
+- 一般单股研究 → OpenBB（数据可用时） + TradingAgents + CIS Gates；
+- 估值/财务模型 → 加 FinRobot；deep 模式可加 Anthropic second opinion；
+- 大股票池/Quant/ML → Qlib；Qlib 不可用才考虑 local Quant fallback；
+- 新因子/模型研发 → RD-Agent → Qlib → LEAN → CIS Validation；
+- 可执行策略/技术规则/仓位规则 → LEAN；
+- ETF/QDII → CIS ETF Gate 始终保留；
+- 短线价位 → CIS Tactical Gate 始终保留；
+- 组合优化 → 组合数据完整后才允许 Qlib/Portfolio Gate；
+- 外部模块故障不得伪装成成功，也不得绕过 Evidence/Risk。
+
+## 7. 状态说明
+
+- `accepted_default_methodology`：日常默认研究方法；
+- `accepted_external_lazy`：正式接受，但只有任务需要且 runtime 实际可用时才调用；
+- `accepted_optional_method_upstream`：方法增强，不作为默认双跑系统；
+- `fail_closed_gate`：只有明确 pass 才可升级；
+- `production_heuristic_pending_calibration`：已生产使用，但权重/阈值仍需未来样本校准；
+- `experimental_fallback`：仅 fallback/sanity，不冒充专业上游；
+- `experimental_baseline`：轻量 baseline，不冒充完整策略引擎；
+- `experimental_optional`：实验性且不在默认链。
+
+## 8. 维护原则
+
+CIS 不 vendor 这些大型上游源码，不通过复制代码“拥有”它们。优先维护：
 
 ```text
-Prepare/Analyze: contents: read
-      ↓ Artifact
-Trusted Publisher: contents: write, 无 LLM Secret, 不执行第三方代码
+routing contract
+adapter contract
+source/as_of contract
+result contract
+quality gates
+version/review state
 ```
 
-Cloud/secret-backed execution 只有当当前 upstream SHA 与 `reviewed_sha` 一致时才允许。NVIDIA profile 只使用 NVIDIA 固定 endpoint + `NVIDIA_API_KEY`；custom profile 只使用 HTTPS endpoint + `OPENAI_COMPATIBLE_API_KEY`。
-
-## 状态说明
-
-- `default_methodology`：日常默认由当前 ChatGPT 会话执行的方法论；
-- `installed_baseline`：已确定性实现，但阈值仍需未来样本验证；
-- `external_optional`：外部可调用能力，不属于默认单股研究链；
-- `experimental`：已有代码/规则，但尚未充分样本外验证；
-- `experimental_baseline`：轻量研究 evaluator，不冒充完整策略回测引擎；
-- `experimental_optional`：实验能力且不属于默认分析链；
-- `explicit_test_only`：只有用户明确要求原版运行/系统测试时使用；
-- `upstream_preferred`：专业方法首选上游，必须逐次确认可访问性；
-- `fail_closed_gate`：没有明确 pass 就视为未通过。
+上游升级不得自动改变 CIS 生产规则或最终动作。

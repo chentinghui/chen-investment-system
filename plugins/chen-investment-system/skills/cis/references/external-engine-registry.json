@@ -1,0 +1,147 @@
+{
+  "schema_version": "cis.external-engines.v1",
+  "cis_version": "0.4.5",
+  "controller": "cis_control_layer",
+  "readiness_probe": "scripts/check_external_engines.py",
+  "principles": {
+    "single_final_authority": "cis_control_layer",
+    "external_decision_authority": "none",
+    "minimum_sufficient_routing": true,
+    "no_majority_vote": true,
+    "no_target_price_averaging": true,
+    "fail_closed_on_quality_gates": true
+  },
+  "engines": {
+    "openbb": {
+      "name": "OpenBB Open Data Platform",
+      "upstream": "OpenBB-finance/OpenBB",
+      "role": "data_fabric",
+      "status": "accepted_external_lazy",
+      "default_for": [
+        "market_data",
+        "fundamental_data",
+        "macro_data",
+        "cross_provider_data_access"
+      ],
+      "decision_authority": "none",
+      "output_class": "evidence_input",
+      "fallback": [
+        "primary_source",
+        "direct_provider",
+        "public_web"
+      ],
+      "notes": "OpenBB is a data integration layer, not a source-of-truth override. Primary filings, exchange data and issuer disclosures win when conflicts are material."
+    },
+    "tradingagents": {
+      "name": "TradingAgents",
+      "upstream": "TauricResearch/TradingAgents",
+      "role": "general_multi_agent_research",
+      "status": "accepted_default_methodology",
+      "default_for": [
+        "general_research",
+        "bull_bear_debate",
+        "technical_fundamental_news_synthesis",
+        "trade_hypothesis"
+      ],
+      "decision_authority": "none",
+      "output_class": "research_candidate",
+      "fallback": [
+        "chatgpt_native_tradingagents_methodology"
+      ],
+      "notes": "Original runtime is optional. A BUY/SELL/HOLD result is an external decision candidate only."
+    },
+    "finrobot": {
+      "name": "FinRobot",
+      "upstream": "AI4Finance-Foundation/FinRobot",
+      "role": "deterministic_financial_modeling",
+      "status": "accepted_external_lazy",
+      "default_for": [
+        "dcf",
+        "comps",
+        "ddm",
+        "lbo",
+        "wacc",
+        "monte_carlo_valuation",
+        "earnings_modeling",
+        "investment_committee_report"
+      ],
+      "decision_authority": "none",
+      "output_class": "specialist_model_evidence",
+      "fallback": [
+        "anthropic_financial_services",
+        "transparent_cis_calculation"
+      ],
+      "notes": "Prefer deterministic computed outputs with explicit assumptions and provenance. Do not average conflicting valuations; reconcile assumptions."
+    },
+    "qlib": {
+      "name": "Microsoft Qlib",
+      "upstream": "microsoft/qlib",
+      "role": "quant_ml_research",
+      "status": "accepted_external_lazy",
+      "default_for": [
+        "factor_research",
+        "ml_signal_research",
+        "portfolio_optimization",
+        "quant_screening",
+        "model_backtest_research"
+      ],
+      "decision_authority": "none",
+      "output_class": "quant_research_evidence",
+      "fallback": [
+        "quant_factor_ranking_extension"
+      ],
+      "notes": "Qlib owns ML/factor research depth. The local quant extension is a lightweight fallback and must not be presented as equivalent to Qlib."
+    },
+    "rd_agent": {
+      "name": "Microsoft RD-Agent",
+      "upstream": "microsoft/RD-Agent",
+      "role": "autonomous_quant_rnd",
+      "status": "accepted_external_lazy",
+      "default_for": [
+        "factor_discovery",
+        "factor_model_co_optimization",
+        "quant_experiment_generation",
+        "research_automation"
+      ],
+      "decision_authority": "none",
+      "output_class": "experimental_research_candidate",
+      "fallback": [],
+      "notes": "RD-Agent proposes and implements experiments. New factors/models remain experimental until independently validated by Qlib/LEAN and CIS Backtest Validation."
+    },
+    "lean": {
+      "name": "QuantConnect LEAN",
+      "upstream": "QuantConnect/Lean",
+      "role": "event_driven_strategy_validation",
+      "status": "accepted_external_lazy",
+      "default_for": [
+        "strategy_backtest",
+        "execution_realism",
+        "order_fee_slippage_path",
+        "position_sizing_rule_validation",
+        "options_strategy_validation"
+      ],
+      "decision_authority": "none",
+      "output_class": "external_quant_validation",
+      "fallback": [],
+      "notes": "If the user explicitly asks for LEAN, do not silently substitute a lightweight baseline evaluator. Successful execution remains unreviewed until CIS backtest validation passes."
+    },
+    "anthropic_financial_services": {
+      "name": "Anthropic Financial Services Skills",
+      "upstream": "live_skill_upstream",
+      "role": "professional_financial_methodology",
+      "status": "accepted_optional_method_upstream",
+      "default_for": [
+        "model_audit",
+        "earnings_deep_dive",
+        "competitive_analysis",
+        "thesis_tracking",
+        "catalyst_analysis",
+        "financial_model_methodology"
+      ],
+      "decision_authority": "none",
+      "output_class": "specialist_method_evidence",
+      "fallback": [],
+      "notes": "Use only when the current environment can actually read or execute the relevant skill."
+    }
+  }
+}
