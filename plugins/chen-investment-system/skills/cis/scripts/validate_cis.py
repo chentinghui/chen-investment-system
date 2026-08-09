@@ -53,25 +53,13 @@ def main() -> int:
     regime_script = read(ROOT / "scripts" / "classify_market_regime.py")
     performance_script = read(ROOT / "scripts" / "evaluate_cis_predictions.py")
 
-    require(
-        skill,
-        [
-            "0.4.0",
-            "ChatGPT-native TradingAgents Methodology",
-            "Quant Research Engine",
-            "Backtest / Validation",
-            "Market Regime",
-            "Performance Loop",
-            "原版 TradingAgents：显式测试模式",
-            "upstream-status.json",
-            "Evidence",
-            "scoring-engine.md",
-            "four-layer-trading-framework.md",
-            "cross-border-etf-premium.md",
-            "CIS 不自动下单",
-        ],
-        "CIS skill",
-    )
+    require(skill, [
+        "0.4.0", "ChatGPT-native TradingAgents Methodology", "Quant Research Engine",
+        "Backtest / Validation", "Market Regime", "Performance Loop",
+        "原版 TradingAgents：显式测试模式", "upstream-status.json", "Evidence",
+        "scoring-engine.md", "four-layer-trading-framework.md", "cross-border-etf-premium.md",
+        "CIS 不自动下单",
+    ], "CIS skill")
     require(workflow, ["CIS 0.4", "Quant Pre-screen", "Market Regime", "Backtest / Calibration", "原版 TradingAgents 测试路径"], "workflow")
     require(registry, ["ChatGPT-native TradingAgents Methodology", "Quant Research Engine", "Backtest / Validation", "Market Regime Layer", "Performance Loop", "explicit_test_only"], "module registry")
     require(routing, ["ChatGPT-native TradingAgents Methodology", "Quant Engine", "Backtest / Validation", "Market Regime", "Performance Loop", "原版 TradingAgents"], "module routing")
@@ -83,7 +71,7 @@ def main() -> int:
     require(agent_registry, ["Quant Research Engine", "Backtest Validator", "Market Regime Layer", "Performance Loop", "Research Manager"], "agent registry")
     require(scoring, ["fundamentals", "growth", "valuation", "coverage >= 85%", "最终动作不能只由分数决定"], "scoring")
     require(quant, ["quant_score", "cis_score", "experimental_uncalibrated", "point-in-time", "factor_coverage"], "quant policy")
-    require(backtest, ["Look-ahead bias", "Survivorship bias", "walk-forward", "Sharpe Ratio", "交易成本"], "backtest policy")
+    require(backtest, ["Look-ahead bias", "Survivorship bias", "walk-forward", "Sharpe Ratio", "Transaction costs"], "backtest policy")
     require(regime, ["risk_on", "neutral", "risk_off", "insufficient", "experimental"], "market regime")
     require(performance, ["realized_return", "benchmark_return", "out_of_sample", "禁止", "自动覆盖"], "performance loop")
     require(remote_workflow, ["TauricResearch/TradingAgents", "run_tradingagents_remote.py", "NVIDIA_API_KEY"], "original TradingAgents workflow")
@@ -99,10 +87,7 @@ def main() -> int:
         if not (ROOT / relative).is_file():
             raise AssertionError(f"broken SKILL.md reference: {relative}")
 
-    forbidden_bundles = [
-        SKILLS_ROOT / "public-equity-investing",
-        SKILLS_ROOT / "tradingagents",
-    ]
+    forbidden_bundles = [SKILLS_ROOT / "public-equity-investing", SKILLS_ROOT / "tradingagents"]
     for path in forbidden_bundles:
         if path.exists():
             raise AssertionError(f"third-party source must not be bundled directly: {path.name}")
