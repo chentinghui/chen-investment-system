@@ -1,6 +1,15 @@
 # CIS 统一评分引擎（0–100）
 
-评分是研究综合工具，不是自动交易器。任何分数都必须服从证据门、风险门、四层交易框架和组合数据门。
+评分是研究综合工具，不是自动交易器。任何分数都必须服从 Evidence Gate、Risk Gate、Market Regime（按需）、四层交易框架和组合数据门。
+
+## 当前校准状态
+
+当前八维权重是 **CIS 生产规则，但尚未完成充分历史/样本外校准**。
+
+- 状态：`production_heuristic_pending_calibration`
+- 不允许因为一次或少量回测结果自动调整权重。
+- `performance-loop.md` 负责评估高分是否真的对应更高未来收益/超额收益。
+- 权重变化必须有足够样本、样本外结果、不同 Regime 稳定性和明确变更理由，并通过人工/ChatGPT 审查后版本化修改。
 
 ## 维度与权重
 
@@ -25,28 +34,39 @@ coverage = 已有维度权重之和 / 100
 weighted_score = Σ(score_i × weight_i) / Σ(available_weight_i)
 ```
 
-- `coverage >= 85%`：`decision_grade`，可报告正式 CIS 分数。
+- `coverage >= 85%`：`decision_grade`，质量门通过后可报告正式 CIS 分数。
 - `70% <= coverage < 85%`：`provisional`，只报告暂定分数和缺失维度。
 - `coverage < 70%`：`insufficient`，不输出单一总分，只列已有维度。
 
 ## 质量门
 
-以下任一成立时，即使 coverage 足够，也不得把分数升级为决策级：
-- 证据审计 `audit_status=unresolved`；
-- 风险经理 `risk_override=block`；
+以下任一成立时，即使 coverage 足够，也不得升级为决策级：
+
+- Evidence Audit `audit_status=unresolved`；
+- Risk Gate `risk_override=block`；
 - 与结论直接相关的关键维度 `runtime_readiness=blocked`；
 - 关键市场/财务数据截止时间不明；
 - 涉及仓位但组合数据门不满足。
 
+## Quant 与 CIS Score 的边界
+
+`quant_score` 只做横截面筛选/排序；`cis_score` 是单标的综合研究评分。二者不得直接相互换算，也不能简单平均成最终分数。
+
+## Market Regime 的边界
+
+Regime 不机械加减总分。它作为 `catalyst_macro`、`risk_resilience` 和交易计划的证据输入；必要时提高/降低安全边际与确认要求。
+
 ## 分数解释
 
 无完整持仓背景时：
+
 - 85–100：进入深入研究（高优先级）
 - 75–84：进入深入研究
 - 60–74：继续观察
 - 0–59：暂时回避
 
 完整 Holding Review 且所有质量门通过时，分数只能作为动作候选：
+
 - 85–100：`考虑增持` 候选
 - 70–84：`维持` 候选
 - 55–69：`考虑减持` 候选
@@ -61,3 +81,4 @@ weighted_score = Σ(score_i × weight_i) / Σ(available_weight_i)
 - 不允许机构买入替代基本面证据。
 - 不允许把低风险写成高收益；`risk_resilience` 只衡量抗风险能力。
 - 总控必须说明“为什么不是更高分”和“什么变化会使分数显著改变”。
+- 历史校准必须遵守 `backtest-validation.md`，禁止前视偏差和样本内过拟合。
