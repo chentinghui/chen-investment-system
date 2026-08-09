@@ -1,6 +1,6 @@
 ---
 name: cis
-description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一用户入口。股票/上市公司/ETF分析、估值、买卖、持仓、财报、风险、目标价、买入价、卖出价和跨标的比较默认进入 CIS。日常单股研究由 CIS Core 完成；Quant、Backtest、Prediction/Evaluation 仅作为按需外围工具，不属于默认分析链。
+description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一用户入口。股票/上市公司/ETF分析、估值、买卖、持仓、财报、风险、目标价、买入价、卖出价和跨标的比较默认进入 CIS。日常单股研究由 CIS Core 完成；Alpha Research Agent、Quant、Backtest、Prediction/Evaluation 仅作为按需外围研究能力，不属于默认分析链。
 ---
 
 # 陈氏投资系统（CIS）0.4.5
@@ -35,6 +35,39 @@ Trade / ETF / Portfolio Gate
 
 日常研究不要求外部 LLM API，也不要求运行原版 TradingAgents Python。
 
+## Alpha Research Agent
+
+Alpha 挖掘与 WorldQuant BRAIN 候选研究统一路由到：
+
+```text
+extensions/alpha_research/
+```
+
+定位：**发现和验证 Alpha 候选，不负责最终买卖裁决。**
+
+```text
+WorldQuant BRAIN / 其他 Alpha 来源
+        ↓
+worldquant/alpha_import.py
+        ↓
+cis.alpha_candidate.v1
+        ↓
+worldquant/alpha_validator.py
+        ↓
+factor_engine / ml_research
+        ↓
+CIS Evidence / Risk / Portfolio Review
+```
+
+固定边界：
+
+- WorldQuant BRAIN 只作为 Alpha 候选来源；
+- 第一版接收用户导出 JSON 或合法 API 返回 JSON，不保存 BRAIN 密码/API key；
+- 不自动提交 Alpha，不自动交易，不连接 Broker；
+- 所有 Alpha Research 输出固定 `decision_authority=none`、`research_status=unreviewed`；
+- `candidate_for_cis_validation` 只表示通过初筛，仍需经济逻辑、look-ahead/data leakage、样本外、换手/成本/容量、相关性/分散化审查；
+- Alpha Research Agent 不得自动改写 CIS 生产评分权重。
+
 ## Optional Research Tooling
 
 外围工具统一位于：
@@ -57,7 +90,8 @@ extensions/research_tooling/
 - 合理买入价、目标价、止盈、止损、估值、上涨空间、风险、财报影响；
 - 持仓复盘、加减仓、退出；
 - 多股票/ETF比较；
-- 大股票池 Top N 任务仍由 CIS 受理，但按需路由 Optional Quant。
+- 大股票池 Top N 任务仍由 CIS 受理，但按需路由 Optional Quant；
+- `找 Alpha`、`研究 Alpha`、`用 WorldQuant BRAIN`、`验证这个 Alpha` 等任务按需路由 Alpha Research Agent。
 
 纯事实问题如公司全称、代码、交易时间、上市地点，不强制运行完整 CIS。
 
@@ -71,9 +105,10 @@ extensions/research_tooling/
 6. 原版 TradingAgents 的 `execution_status=success` / `runtime_readiness=remote_ready` 只表示程序完成；`research_quality` 未审查时不能直接作为最终结论。
 7. 当前市场环境会显著影响交易计划时读取 `references/market-regime.md`；必须选择 `regime_profile`，missing/stale 信号先排除，再按 fresh coverage 判断是否能分类。
 8. 专业金融任务按需读取 `references/anthropic-financial-services.md`；只有本次真实可访问时才能声称实际运行。
-9. 大股票池筛选、规则回测或历史校准时，才读取对应 references 并路由 `extensions/research_tooling/`。
-10. 对短线/价位问题必须读取 `references/evidence-confidence.md` 与 `references/four-layer-trading-framework.md`，执行 Price/Session Guard、Quote Freshness Guard 与 Tactical R/R Gate。
-11. 所有外部/外围结果必须回到 CIS 最终质量门。
+9. Alpha/WorldQuant 任务读取 `extensions/alpha_research/README.md` 并路由对应 importer / validator / factor / ML diagnostics；所有结果仍需回到 CIS 最终质量门。
+10. 大股票池筛选、规则回测或历史校准时，才读取对应 references 并路由 `extensions/research_tooling/`。
+11. 对短线/价位问题必须读取 `references/evidence-confidence.md` 与 `references/four-layer-trading-framework.md`，执行 Price/Session Guard、Quote Freshness Guard 与 Tactical R/R Gate。
+12. 所有外部/外围结果必须回到 CIS 最终质量门。
 
 ## 必读资料
 
@@ -92,6 +127,7 @@ extensions/research_tooling/
 按需读取：
 
 - `references/tradingagents.md`（仅原版运行/测试/上游审查）
+- `extensions/alpha_research/README.md`（仅 Alpha / WorldQuant BRAIN 研究）
 - `references/quant-engine.md`（仅筛选任务）
 - `references/backtest-validation.md`（仅规则验证）
 - `references/performance-loop.md`（仅记录/复盘/校准）
@@ -148,6 +184,10 @@ SHA 变化 → review_required → 继续使用稳定基线
 ### Anthropic Financial Services
 
 DCF / Comps / Earnings / 三表 / 模型审计 / Competitive / Thesis / Catalyst 等专业子问题按需优先读取上游 `main` 对应 Skill。只有本次真实读取/执行后才能标记已使用，输出仍需回到 CIS Evidence/Risk/Score。
+
+### WorldQuant BRAIN
+
+WorldQuant BRAIN 作为外部 Alpha Research Source，仅向 CIS 提供 Alpha 表达式、设置和研究指标。CIS 不把 BRAIN 单个平台分数视为最终 Alpha 证明；导入后统一进入 `extensions/alpha_research/` 的结构校验、横截面/OOS 诊断和 CIS 风险复核。凭据不得写入 Alpha candidate 契约。
 
 ## Fail-Closed Evidence / Risk + Critical Dimension Gate
 
@@ -256,14 +296,14 @@ us_nasdaq_v1 → QQQ + Nasdaq-100 breadth
 Prediction/Evaluation 仍是外围 experimental：
 
 - 公共 Ledger 使用结构化 allowlist，任意 `notes/account/shares/cost_basis` 等非白名单字段直接拒绝；
-- 5D/20D/60D 是同一 research 的相关结果，不得当成三个独立样本；相关性按 horizon 分开计算；
+- 5D/20D/60D 是同一 research 的相关结果，**不得当成三个独立样本**；相关性按 horizon 分开计算；
 - 自动 settlement 当前是 next-session **adjusted-close to adjusted-close** 研究指标，不冒充 next-open 真实成交收益；缺少可审计终值时保持 unresolved。
 
 ## 标准输入
 
 ```text
-research_type: company | stock | ETF | portfolio | industry | macro | earnings | screening | backtest
-subject: 标的或股票池
+research_type: company | stock | ETF | portfolio | industry | macro | earnings | screening | backtest | alpha_research
+subject: 标的、股票池或 Alpha 候选
 research_question: 本次问题
 mode: quick | standard | deep | holding_review
 analysis_date/as_of: 数据截止时间
