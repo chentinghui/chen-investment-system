@@ -203,7 +203,7 @@ def main() -> int:
         "legacy stock assistant",
     )
 
-    for relative in re.findall(r"`(references/[^`]+\\.md)`", skill):
+    for relative in re.findall(r"`(references/[^`]+\.md)`", skill):
         if not (ROOT / relative).is_file():
             raise AssertionError(f"broken SKILL.md reference: {relative}")
 
