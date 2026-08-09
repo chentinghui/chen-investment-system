@@ -19,6 +19,49 @@
 
 > 先看趋势决定持有方向，再看价格寻找位置，再看成交确认真假，最后用风险层决定仓位。
 
+## Tactical Price / Session Guard
+
+短线交易涉及“当前价”时，必须同时登记：
+
+```text
+analysis_timestamp
+quote_timestamp
+market_session: premarket | regular | afterhours | closed
+price_type: premarket | live | afterhours | last_close
+current_price
+```
+
+语义必须匹配：
+
+- `premarket` → `premarket`；
+- `regular` → `live`；
+- `afterhours` → `afterhours`；
+- `closed` → `last_close`。
+
+`last_close` 是参考价，不得冒充实时价格。确定性校验器为 `scripts/tactical_setup_gate.py`。
+
+## Tactical Risk / Reward Gate
+
+对 `decision_context=tactical` 或任何明确短线做差价的买入问题，CIS Quality Score 与“现在是否是好交易”必须分开。至少给出：
+
+```text
+Entry Zone
+Chase Limit（如适用）
+Stop / Invalidation
+Target 1
+Target 2（如适用）
+Reward / Risk
+```
+
+确定性基线按允许买入区间的**最差 Target 1 R/R**分类：
+
+- `< 1.0` → `reject`；
+- `1.0–<1.5` → `weak_setup`；
+- `1.5–<2.0` → `acceptable`；
+- `>=2.0` → `attractive`。
+
+这些阈值是交易纪律 baseline，不是已经校准的最优参数。若当前价格越过 `chase_limit`，即使公司质量高或 CIS 总分高，也输出 `blocked_do_not_chase`；若价格尚未进入 Entry Zone，则输出 `wait_for_entry`。Tactical Gate 不直接发布自动买卖指令。
+
 ## 双向卖出原则
 
 卖出分析必须同时覆盖盈利止盈和防守止损，不得只给亏损后的卖点。
@@ -55,7 +98,7 @@
 
 对买卖价位或持仓复盘，输出必须同时包含：
 
-1. 当前价格与资料截止时间；
+1. 当前价格、`price_type` 与资料截止时间；
 2. 趋势层结论；
 3. 关键支撑、压力和成交确认条件；
 4. **继续持有区**；
@@ -66,6 +109,8 @@
 9. **基本面失效条件**；
 10. 最终动作及其成立条件。
 
+对短线买入还必须额外给出 Entry Zone、Chase Limit（如适用）、Stop、Target 1/2、R/R 和 Tactical Gate 状态。
+
 若资料不足以支持具体价位或比例，必须明确标记“证据不足”或给条件区间，不得猜测。
 
 ## 动作解释
@@ -74,5 +119,7 @@
 - `盈利止盈区`：允许分批兑现，但不是必须卖出；必须说明触发依据。
 - `回调观察区`：出现调整但尚未破坏趋势，不应机械止损。
 - `防守卖出线`：趋势、量价或基本面失效后降低仓位或退出。
+- `blocked_do_not_chase`：赔率或价格位置不支持追价，不等于看空公司。
+- `wait_for_entry`：研究逻辑可继续观察，但当前价格没有进入计划区。
 
 最终结论必须区分“可以卖”“建议卖”“必须卖”和“暂不卖”，避免把可选风险管理方案写成强制交易指令。
