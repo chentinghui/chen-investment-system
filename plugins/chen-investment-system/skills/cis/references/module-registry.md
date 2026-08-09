@@ -17,7 +17,6 @@
 | AI Industry | AI 价值链、敞口证明、采用率、经济性、依赖和技术风险 | `mixed` | 有从主题到 KPI 的传导证据 | CIS + Anthropic `sector-overview` / `idea-generation` |
 | Competitive Analysis | 市场结构、同行经济、战略位置和护城河方向 | `upstream_preferred` | Anthropic `competitive-analysis` 可读取，且有竞争集合、市场定义和可比资料 | CIS + Anthropic Financial Services |
 | Thesis & Catalysts | 论点状态、证伪、催化剂和复盘 | `upstream_preferred` | Anthropic `thesis-tracker` / `catalyst-calendar` 可读取，且事件/论点资料有日期 | CIS + Anthropic Financial Services |
-| Legacy Public Equity Investing | 旧兼容专业工作流 | `legacy_optional` | 仅用户明确要求，或 Anthropic 路由不可用且本次真实可调用 | legacy fallback；不得拥有最终结论 |
 
 ## 本次能力状态
 
@@ -25,7 +24,6 @@
 - `unavailable`：当前环境未发现，或调用所需权限不可用。
 - `external_optional`：静态登记中的外部可选依赖；运行时必须转换为 `installed` 或 `unavailable`。
 - `upstream_preferred`：首选从 `anthropics/financial-services` 当前上游或验证快照读取方法；运行时必须记录 `live_upstream`、`vendored_snapshot`、`limited` 或 `blocked`。
-- `legacy_optional`：仅兼容备用，不得因已安装而自动获得优先级。
 - `mixed`：可由 CIS 基础规则与一个或多个外部模块共同完成，实际范围取决于本次资料和能力。
 
 ## 本次就绪度
