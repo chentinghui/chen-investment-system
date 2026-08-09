@@ -36,7 +36,7 @@ def require_version(text: str, version: str, label: str) -> None:
 
 
 def main() -> int:
-    version = "0.4.2"
+    version = "0.4.3"
     skill = read(SKILL)
     workflow = read(REFS / "system-workflow.md")
     registry = read(REFS / "module-registry.md")
@@ -49,6 +49,8 @@ def main() -> int:
     agent_registry = read(REFS / "agent-registry.md")
     scoring = read(REFS / "scoring-engine.md")
     regime = read(REFS / "market-regime.md")
+    evidence = read(REFS / "evidence-confidence.md")
+    trading_framework = read(REFS / "four-layer-trading-framework.md")
     remote_workflow = read(REMOTE_WORKFLOW)
     upstream_status_text = read(UPSTREAM_STATUS)
     plugin_json_text = read(PLUGIN_JSON)
@@ -64,6 +66,7 @@ def main() -> int:
         (methodology, "TradingAgents methodology"),
         (scoring, "scoring engine"),
         (regime, "market regime"),
+        (evidence, "evidence confidence"),
         (readme, "README"),
     ]:
         require_version(text, version, label)
@@ -76,25 +79,57 @@ def main() -> int:
         "CIS Core", "Optional Research Tooling", "extensions/research_tooling/",
         "Fail-Closed Evidence", "Critical Dimension Gate", "check_tradingagents_upstream.py",
         "execution_status", "research_quality", "CIS 不自动下单",
+        "Tactical R/R Gate", "Evidence Freshness", "tactical_setup_gate.py",
     ], "CIS skill")
-    require(workflow, ["Core Research", "Optional Research Tooling", "extensions/research_tooling/", "fail-closed"], "workflow")
-    require(registry, ["Core Analysis", "Extension", "Quant Factor Ranking Engine", "Prediction / Evaluation"], "module registry")
-    require(routing, ["Optional Research Tooling", "extensions/research_tooling/", "Critical Dimension", "7 天 TTL"], "module routing")
-    require(external, ["7 天 TTL", "execution_status", "research_quality", "Optional Research Tooling", "Market Regime"], "external modules")
-    require(methodology, ["7天 TTL", "check_tradingagents_upstream.py", "Critical Dimension", "execution_status"], "TradingAgents methodology")
+    require(workflow, [
+        "Core Research", "Optional Research Tooling", "extensions/research_tooling/", "fail-closed",
+        "Price/Session Guard", "Tactical R/R Gate", "signal_as_of",
+    ], "workflow")
+    require(registry, [
+        "Core Analysis", "Extension", "Quant Factor Ranking Engine", "Prediction / Evaluation",
+        "Price / Session Guard", "Tactical R/R Gate",
+    ], "module registry")
+    require(routing, [
+        "Optional Research Tooling", "extensions/research_tooling/", "Critical Dimension", "7 天 TTL",
+        "tactical_setup_gate.py", "catalyst_event_review",
+    ], "module routing")
+    require(external, [
+        "7 天 TTL", "execution_status", "research_quality", "Optional Research Tooling", "Market Regime",
+        "Tactical Price/RR Gate",
+    ], "external modules")
+    require(methodology, [
+        "7天 TTL", "check_tradingagents_upstream.py", "Critical Dimension", "execution_status",
+        "Tactical Price/RR Gate",
+    ], "TradingAgents methodology")
     require(tradingagents, ["显式测试", "external_decision_candidate", "execution_status", "research_quality", "7 天 TTL"], "original TradingAgents runtime")
     require(anthropic, ["dcf-model", "comps-analysis", "earnings-analysis", "thesis-tracker", "上游 `main`"], "Anthropic policy")
     require(orchestration, ["Optional Research Tooling", "多角色独立性", "最终综合顺序"], "orchestration")
     require(agent_registry, ["CIS Core", "Optional Research Tooling", "Research Manager", "TradingAgents TTL Checker"], "agent registry")
-    require(scoring, ["audit_status = unverified", "risk_status  = unverified", "Critical Dimension Gate", "decision_grade"], "scoring")
-    require(regime, ["JSON boolean", "high_yield_oas_bps", "realized_vol_20d", "experimental_baseline"], "market regime")
-    require(extension_readme, ["CIS Core", "可选外围研究工具", "故障不得阻塞 CIS Core"], "research tooling extension")
+    require(scoring, [
+        "audit_status = unverified", "risk_status  = unverified", "Critical Dimension / Context Check Gate",
+        "decision_grade", "price_context=True", "catalyst_event_review=True",
+    ], "scoring")
+    require(regime, [
+        "JSON boolean", "high_yield_oas_bps", "realized_vol_20d", "experimental_baseline",
+        "signal_as_of", "freshness",
+    ], "market regime")
+    require(evidence, [
+        "Evidence Freshness Guard", "last_close", "tactical_setup_gate.py", "Evidence Audit 不得 `pass`",
+    ], "evidence confidence")
+    require(trading_framework, [
+        "Tactical Price / Session Guard", "Tactical Risk / Reward Gate", "blocked_do_not_chase", "Entry Zone",
+    ], "trading framework")
+    require(extension_readme, [
+        "CIS Core", "可选外围研究工具", "故障不得阻塞 CIS Core", "5 / 20 / 60 trading days",
+        "adjusted_close_only",
+    ], "research tooling extension")
 
     core_scripts = ROOT / "scripts"
     required_core = [
         "score_cis.py",
         "analyze_etf_premium.py",
         "classify_market_regime.py",
+        "tactical_setup_gate.py",
         "check_tradingagents_upstream.py",
         "run_tradingagents.py",
         "run_tradingagents_remote.py",
@@ -103,6 +138,7 @@ def main() -> int:
         "test_analyze_etf_premium.py",
         "test_hardening.py",
         "test_systematic_layers.py",
+        "test_tactical_setup_gate.py",
     ]
     for name in required_core:
         read(core_scripts / name)
@@ -119,23 +155,60 @@ def main() -> int:
         if (core_scripts / name).exists():
             raise AssertionError(f"optional research tool leaked into CIS Core: {name}")
         read(EXT / name)
-    read(EXT / "test_research_tooling.py")
+    extension_tests = read(EXT / "test_research_tooling.py")
 
     score_script = read(core_scripts / "score_cis.py")
     regime_script = read(core_scripts / "classify_market_regime.py")
+    tactical_script = read(core_scripts / "tactical_setup_gate.py")
     ttl_script = read(core_scripts / "check_tradingagents_upstream.py")
     local_ta = read(core_scripts / "run_tradingagents.py")
     remote_ta = read(core_scripts / "run_tradingagents_remote.py")
     score_tests = read(core_scripts / "test_score_cis.py")
+    tactical_tests = read(core_scripts / "test_tactical_setup_gate.py")
     hardening_tests = read(core_scripts / "test_hardening.py")
+    systematic_tests = read(core_scripts / "test_systematic_layers.py")
 
-    require(score_script, ["audit_status: str = \"unverified\"", "risk_status: str = \"unverified\"", "CRITICAL_DIMENSIONS", "critical_dimensions_missing"], "score script")
-    require(regime_script, ["strict_bool", "high_yield_oas_bps", "realized_vol_20d", "SIGNAL_WEIGHTS"], "regime script")
+    ledger_script = read(EXT / "prediction_ledger.py")
+    recorder_script = read(EXT / "record_cis_research.py")
+    settlement_script = read(EXT / "settle_due_predictions.py")
+
+    require(score_script, [
+        "audit_status: str = \"unverified\"", "risk_status: str = \"unverified\"", "CRITICAL_DIMENSIONS",
+        "TACTICAL_REQUIRED_CHECKS", "VALID_AUDIT_STATUSES", "tactical_checks_incomplete", "_strict_bool",
+    ], "score script")
+    require(regime_script, [
+        "strict_bool", "high_yield_oas_bps", "realized_vol_20d", "SIGNAL_WEIGHTS",
+        "MAX_SIGNAL_AGE_DAYS", "signal_as_of", "freshness_status",
+    ], "regime script")
+    require(tactical_script, [
+        "validate_price_context", "evaluate_tactical_setup", "EXPECTED_PRICE_TYPE", "blocked_do_not_chase",
+        "rr_target1_worst", "last_close_reference",
+    ], "tactical setup script")
     require(ttl_script, ["should_check", "apply_check", "check_ttl_days", "fetch_current_sha"], "TTL script")
     require(local_ta, ["execution_status", "evidence_audit_status", "research_quality", "external_decision_candidate"], "local TradingAgents adapter")
     require(remote_ta, ["execution_status", "evidence_audit_status", "research_quality", "external_decision_candidate"], "remote TradingAgents adapter")
-    require(score_tests, ["unittest.TestCase", "test_defaults_are_fail_closed", "test_missing_valuation_cannot_be_decision_grade"], "score tests")
+    require(score_tests, [
+        "unittest.TestCase", "test_defaults_are_fail_closed", "test_missing_valuation_cannot_be_decision_grade",
+        "test_string_false_is_rejected_for_critical_blocked", "test_tactical_requires_price_and_catalyst_checks",
+    ], "score tests")
+    require(tactical_tests, [
+        "TacticalSetupGateTests", "test_regular_session_rejects_last_close_as_current", "test_beyond_chase_limit_blocks_entry",
+    ], "tactical setup tests")
+    require(systematic_tests, [
+        "test_missing_signal_as_of_forces_insufficient", "test_stale_market_signal_forces_insufficient",
+    ], "systematic layer tests")
     require(hardening_tests, ["TradingAgentsTTLTests", "TradingAgentsAdapterTests"], "hardening tests")
+
+    require(ledger_script, ["DEFAULT_HORIZONS_TRADING_DAYS = (5, 20, 60)", "append_event", "record_prediction"], "prediction ledger")
+    require(recorder_script, ["CIS_VERSION = \"0.4.3\"", "record_snapshot"], "research recorder")
+    require(settlement_script, [
+        "_first_index_after", "benchmark_sessions:", "path_metric_basis", "adjusted_close_only",
+        "no executable stock price",
+    ], "settlement script")
+    require(extension_tests, [
+        "ResearchRecorderTests", "SettlementTests", "test_default_horizons_are_tactical",
+        "test_settlement_enters_after_research_date_and_uses_benchmark_sessions",
+    ], "research tooling tests")
 
     require(remote_workflow, [
         "workflow_dispatch", "request_id:", "ticker:", "analysis_date:",
@@ -163,13 +236,13 @@ def main() -> int:
         if path.exists():
             raise AssertionError(f"third-party source must not be bundled directly: {path.name}")
 
-    print(f"CIS {version} core/extension validation passed")
+    print(f"CIS {version} tactical hardening validation passed")
     return 0
 
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (AssertionError, json.JSONDecodeError) as exc:
+    except (AssertionError, json.JSONDecodeError, ValueError) as exc:
         print(f"CIS plugin validation failed: {exc}", file=sys.stderr)
         raise SystemExit(1)
