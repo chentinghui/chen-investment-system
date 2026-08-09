@@ -66,6 +66,13 @@ backtest  → lean backtest <project> --output <directory>
 parse     → 解析已有 LEAN result JSON
 ```
 
+状态枚举固定为：
+
+```text
+execution_status = success | invalid_input | unavailable | error
+runtime_readiness = ready | lean_cli_missing | docker_missing | unavailable
+```
+
 成功结果至少标记：
 
 ```text
