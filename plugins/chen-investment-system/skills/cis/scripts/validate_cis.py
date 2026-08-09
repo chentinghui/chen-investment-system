@@ -36,7 +36,7 @@ def require_version(text: str, version: str, label: str) -> None:
 
 
 def main() -> int:
-    version = "0.4.3"
+    version = "0.4.4"
     skill = read(SKILL)
     workflow = read(REFS / "system-workflow.md")
     registry = read(REFS / "module-registry.md")
@@ -211,7 +211,7 @@ def main() -> int:
     require(hardening_tests, ["TradingAgentsTTLTests", "TradingAgentsAdapterTests"], "hardening tests")
 
     require(ledger_script, ["DEFAULT_HORIZONS_TRADING_DAYS = (5, 20, 60)", "append_event", "record_prediction"], "prediction ledger")
-    require(recorder_script, ["CIS_VERSION = \"0.4.3\"", "record_snapshot"], "research recorder")
+    require(recorder_script, ["CIS_VERSION = \"0.4.4\"", "record_snapshot"], "research recorder")
     require(settlement_script, [
         "_first_index_after", "benchmark_sessions:", "path_metric_basis", "adjusted_close_only",
         "no executable stock price",
