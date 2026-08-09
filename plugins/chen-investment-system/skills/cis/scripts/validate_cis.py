@@ -30,6 +30,10 @@ def main() -> int:
     registry = read(REFS / "module-registry.md")
     routing = read(REFS / "module-routing.md")
     external = read(REFS / "external-modules.md")
+    tradingagents = read(REFS / "tradingagents.md")
+    anthropic = read(REFS / "anthropic-financial-services.md")
+    orchestration = read(REFS / "agent-orchestration.md")
+    agent_registry = read(REFS / "agent-registry.md")
     output_modes = read(REFS / "output-modes.md")
     contract = read(REFS / "io-contract.md")
     evidence = read(REFS / "evidence-confidence.md")
@@ -39,42 +43,101 @@ def main() -> int:
     evaluations = read(REFS / "evaluation-cases.md")
     premium_analyzer = read(ROOT / "scripts" / "analyze_etf_premium.py")
     premium_tests = read(ROOT / "scripts" / "test_analyze_etf_premium.py")
+    ta_adapter = read(ROOT / "scripts" / "run_tradingagents.py")
     assistant = read(STOCK_ASSISTANT)
 
     require(
         skill,
         [
+            "0.3.0",
+            "TradingAgents",
+            "Anthropic Financial Services",
             "唯一用户入口",
-            "quick",
-            "standard",
-            "deep",
-            "holding_review",
-            "ready",
-            "limited",
-            "blocked",
+            "Runtime Guard",
+            "external_decision_candidate",
+            "scoring-engine.md",
+            "four-layer-trading-framework.md",
             "cross-border-etf-premium.md",
         ],
         "CIS skill",
     )
     require(
         workflow,
-        ["任务受理", "个人规则", "模块预检", "证据登记", "风险门", "跟踪与复盘"],
+        [
+            "CIS 0.3",
+            "TradingAgents",
+            "Anthropic Financial Services",
+            "Fallback adapters",
+            "CIS 八维统一评分",
+            "四层结构",
+            "ETF / QDII",
+            "跟踪与复盘",
+        ],
         "workflow",
     )
     require(
         registry,
-        ["默认能力状态", "本次就绪度", "external_optional", "ETF", "Portfolio", "AI Industry"],
+        [
+            "TradingAgents Core",
+            "upstream_default",
+            "external_decision_candidate",
+            "Anthropic Financial Services",
+            "Trading Framework",
+            "ETF / QDII",
+        ],
         "registry",
     )
     require(
         routing,
-        ["运行前检查", "CIS 是唯一总控", "ETF/index diligence", "portfolio-risk-management"],
+        [
+            "TradingAgents",
+            "Anthropic",
+            "运行前检查",
+            "Fallback 路由",
+            "四层交易框架",
+            "不得声称已运行",
+        ],
         "routing",
     )
     require(
         external,
-        ["上游未提供明确 LICENSE", "capability_status: unavailable", "未运行 Buffett 模块"],
+        [
+            "TradingAgents（默认通用研究核心）",
+            "v0.3.1",
+            "Apache License 2.0",
+            "external_decision_candidate",
+            "代码持续更新不代表行情/新闻实时",
+            "Anthropic Financial Services",
+        ],
         "external module policy",
+    )
+    require(
+        tradingagents,
+        [
+            "默认通用股票研究/决策核心",
+            "Portfolio Manager",
+            "external_decision_candidate",
+            "installed_ready",
+            "upstream_only",
+            "look-ahead",
+            "run_tradingagents.py",
+        ],
+        "TradingAgents adapter policy",
+    )
+    require(
+        anthropic,
+        ["dcf-model", "comps-analysis", "earnings-analysis", "thesis-tracker"],
+        "Anthropic policy",
+    )
+    require(
+        orchestration,
+        ["TradingAgents", "Anthropic", "避免重复分析", "external_decision_candidate", "最终综合顺序"],
+        "orchestration",
+    )
+    require(
+        agent_registry,
+        ["fallback adapters", "TradingAgents Analyst Team", "证据审计员", "CIS 专属规则适配器"],
+        "agent registry",
     )
     require(
         output_modes,
@@ -91,19 +154,19 @@ def main() -> int:
     require(lifecycle, ["research_id", "thesis_falsifiers", "change_since_prior"], "lifecycle")
     require(
         premium,
-        [
-            "产品身份门",
-            "entry_premium",
-            "结构性溢价",
-            "风险提示公告",
-            "不得设置",
-            "通用阈值",
-        ],
+        ["产品身份门", "entry_premium", "结构性溢价", "风险提示公告", "通用阈值"],
         "cross-border ETF premium policy",
     )
     require(
         evaluations,
-        ["贵州茅台", "ETF", "股票研究助手", "Buffett 与 DCF", "159509", "完全重复", "精确卖出清单"],
+        [
+            "TradingAgents 包未安装",
+            "external_decision_candidate",
+            "look-ahead leakage",
+            "Anthropic DCF",
+            "159509",
+            "英伟达186美元",
+        ],
         "evaluation cases",
     )
     require(
@@ -117,8 +180,19 @@ def main() -> int:
         "ETF premium tests",
     )
     require(
+        ta_adapter,
+        [
+            "TradingAgentsGraph",
+            "propagate",
+            "external_decision_candidate",
+            "probe-only",
+            "upstream_only",
+        ],
+        "TradingAgents runtime adapter",
+    )
+    require(
         assistant,
-        ["旧版中文入口兼容层", "调用 `$cis`", "不在本 Skill 中直接调用"],
+        ["旧版中文入口兼容层", "调用 `$cis`", "TradingAgents", "Anthropic Financial Services"],
         "legacy stock assistant",
     )
 
@@ -129,12 +203,13 @@ def main() -> int:
     forbidden_bundles = [
         SKILLS_ROOT / "buffett",
         SKILLS_ROOT / "public-equity-investing",
+        SKILLS_ROOT / "tradingagents",
     ]
     for path in forbidden_bundles:
         if path.exists():
-            raise AssertionError(f"third-party source must not be bundled: {path.name}")
+            raise AssertionError(f"third-party source must not be bundled directly: {path.name}")
 
-    print("CIS plugin validation passed")
+    print("CIS 0.3 plugin validation passed")
     return 0
 
 
