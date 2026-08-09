@@ -1,7 +1,7 @@
 {
   "name": "chen-investment-system",
-  "version": "0.4.1",
-  "description": "陈氏投资系统：ChatGPT-native TradingAgents 方法论 + Quant/Backtest/Regime/Performance Loop + 专业金融 Skills + CIS 最终质量门。",
+  "version": "0.4.2",
+  "description": "陈氏投资系统：ChatGPT-native TradingAgents 方法论 + Quant/Backtest/Regime/Prediction Ledger/Performance Loop + 专业金融 Skills + CIS fail-closed 最终质量门。",
   "author": {
     "name": "chentinghui",
     "url": "https://github.com/chentinghui"
@@ -16,6 +16,7 @@
     "quant-research",
     "backtest",
     "market-regime",
+    "prediction-ledger",
     "anthropic-financial-services",
     "valuation",
     "portfolio",
@@ -25,14 +26,14 @@
   "interface": {
     "displayName": "陈氏投资系统",
     "shortDescription": "系统化股票研究 + 量化筛选 + 风险与交易纪律",
-    "longDescription": "CIS 0.4.1 默认由当前 ChatGPT 会话直接执行 TradingAgents 多角色研究方法论；TradingAgents 上游采用 7 天 TTL 的使用时轻量检查，不使用定时监控；大股票池按需使用 Quant Engine 预筛，Backtest 负责规则验证，Market Regime 负责环境修正，Performance Loop 负责历史校准；Anthropic Financial Services 处理 DCF、Comps、财报和模型等专业子问题；CIS 保留证据门、八维评分、四层交易、ETF/QDII纪律、组合门和最终中文研究姿态。原版 TradingAgents Python 仅显式测试时运行。",
+    "longDescription": "CIS 0.4.2 默认由当前 ChatGPT 会话直接执行 TradingAgents 多角色研究方法论；TradingAgents 上游采用 7 天 TTL 的使用时轻量检查并由确定性脚本支持；大股票池按需使用 Quant Factor Ranking 预筛，Backtest 按换手率计成本并支持 train/validation/OOS，Market Regime 负责环境修正，Prediction Ledger 与 Performance Loop 负责历史校准；Evidence/Risk 改为 fail-closed，并加入 Critical Dimension Gate；Anthropic Financial Services 处理 DCF、Comps、财报和模型等专业子问题。原版 TradingAgents Python 仅显式测试时运行。",
     "developerName": "chentinghui",
     "category": "Productivity",
     "capabilities": ["Interactive"],
     "defaultPrompt": [
-      "用陈氏投资系统分析一只股票，按当前 CIS 0.4.1 规则直接执行多角色研究并给出证据化结论。",
-      "用陈氏投资系统从一个股票池中做量化预筛，再深度研究排名靠前的候选。",
-      "复盘我的持仓，执行 CIS 八维评分、Market Regime、四层交易框架和组合门。"
+      "用陈氏投资系统分析一只股票，按当前 CIS 0.4.2 规则执行 fail-closed 证据/风险门、关键维度门和多角色研究。",
+      "用陈氏投资系统从一个同一 as_of 的股票池中做量化预筛，再深度研究排名靠前的候选。",
+      "复盘我的持仓，执行 CIS 八维评分、Market Regime、四层交易框架、组合门和 Prediction Ledger。"
     ]
   }
 }
