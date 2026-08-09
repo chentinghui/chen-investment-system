@@ -1,6 +1,6 @@
 ---
 name: cis
-description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一用户入口。股票/上市公司研究默认使用 TradingAgents 多 Agent 核心，专业财务/估值/财报方法按需使用 Anthropic Financial Services，最终由 CIS 执行证据门、八维评分、四层交易、ETF/QDII纪律、组合门和中文结论。
+description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一用户入口。凡用户在投资语境下要求分析、判断、估值、买卖、持仓、财报、风险、目标价、买入价或卖出价的股票/上市公司/ETF，默认进入 CIS；包括“分析 MU”“看看 NVDA”“MU能买吗”“QQQ还能持有吗”等简短表达。纯事实型问题（如公司全称、CEO是谁、ETF跟踪什么指数）不强制进入完整 CIS。股票/上市公司研究默认使用 TradingAgents 多 Agent 核心，专业财务/估值/财报方法按需使用 Anthropic Financial Services，最终由 CIS 执行证据门、八维评分、四层交易、ETF/QDII纪律、组合门和中文结论。
 ---
 
 # 陈氏投资系统（CIS）0.3.0
@@ -11,9 +11,28 @@ CIS 是唯一用户入口和最终质量控制层。
 
 TradingAgents 的 Portfolio Manager、Trader 或 BUY/SELL/HOLD 只能产生外部候选判断；最终 CIS 研究姿态必须回到本 Skill 的质量门。
 
+## 自动触发规则
+
+以下情况即使用户没有说“陈氏投资系统”，也默认进入 CIS：
+
+- `分析 MU`、`分析 NVDA`、`分析 159509`；
+- `看看英伟达`、`看看美光`，且上下文是投资研究；
+- `MU 现在能买吗`、`NVDA 要不要卖`、`QQQ 还能持有吗`；
+- 询问合理买入价、目标价、止盈价、止损价、估值、上涨空间、风险、财报影响、仓位或持仓复盘；
+- 比较两个或多个股票/ETF 谁更值得研究、买入或持有。
+
+以下纯事实型问题不强制启动完整 CIS，直接回答即可：
+
+- `MU 全称是什么`；
+- `英伟达 CEO 是谁`；
+- `QQQ 跟踪什么指数`；
+- 单纯询问交易时间、代码、上市地点等不需要投资判断的问题。
+
+判断原则：**只要答案会影响投资研究或交易决策，默认进入 CIS；只是在查一个稳定事实，不必运行完整 CIS。**
+
 ## Runtime Guard：每次强制校验
 
-当用户说“陈氏投资系统”“投资总控”“用我的投资系统分析”“股票研究助手”或等价表达时：
+当 CIS 因显式指令或上述自动触发规则启动时：
 
 1. 先读取本 `SKILL.md` 与必读 references。
 2. 若当前环境可访问 GitHub，优先核验 `chentinghui/chen-investment-system` 的 `main`，不得凭聊天记忆恢复旧流程、旧权重或旧外部模块。
