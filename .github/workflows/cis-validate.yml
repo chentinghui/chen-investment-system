@@ -5,7 +5,9 @@ on:
     paths:
       - "plugins/chen-investment-system/**"
       - ".github/workflows/cis-validate.yml"
+      - ".github/workflows/cis-tradingagents.yml"
       - "runtime/tradingagents/upstream-status.json"
+      - "runtime/evaluations/**"
       - "README.md"
   workflow_dispatch:
 
@@ -28,7 +30,7 @@ jobs:
         run: |
           python plugins/chen-investment-system/skills/cis/scripts/validate_cis.py
 
-      - name: Compile deterministic scripts
+      - name: Compile deterministic and adapter scripts
         run: |
           python -m py_compile \
             plugins/chen-investment-system/skills/cis/scripts/score_cis.py \
@@ -36,10 +38,15 @@ jobs:
             plugins/chen-investment-system/skills/cis/scripts/quant_factor_engine.py \
             plugins/chen-investment-system/skills/cis/scripts/backtest_factor_strategy.py \
             plugins/chen-investment-system/skills/cis/scripts/classify_market_regime.py \
-            plugins/chen-investment-system/skills/cis/scripts/evaluate_cis_predictions.py
+            plugins/chen-investment-system/skills/cis/scripts/evaluate_cis_predictions.py \
+            plugins/chen-investment-system/skills/cis/scripts/check_tradingagents_upstream.py \
+            plugins/chen-investment-system/skills/cis/scripts/prediction_ledger.py \
+            plugins/chen-investment-system/skills/cis/scripts/run_tradingagents.py \
+            plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py
 
       - name: Run deterministic unit tests
         run: |
           python -m unittest discover \
             -s plugins/chen-investment-system/skills/cis/scripts \
-            -p "test_*.py"
+            -p "test_*.py" \
+            -v
