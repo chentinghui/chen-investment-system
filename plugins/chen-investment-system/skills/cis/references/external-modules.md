@@ -1,4 +1,4 @@
-# CIS 外部模块适配与降级（0.4.4）
+# CIS 外部模块适配与降级（0.4.5）
 
 外部模块的“存在/可访问”“程序执行成功”“研究质量通过”必须分开判断。README、历史运行记录、聊天记忆或模块名称都不能证明本次已运行，更不能证明结果可靠。
 
@@ -7,7 +7,6 @@
 - 上游：`TauricResearch/TradingAgents`。
 - CIS 日常股票研究默认**不运行其 Python 程序**，而是使用 `tradingagents-methodology.md` 的 ChatGPT-native 稳定方法论。
 - 原版 Python 只用于用户明确要求的运行/测试、A/B 验证或上游功能审查。
-- 远程显式测试每次重新 clone 上游当前 `main`。
 - 日常上游检查使用 `runtime/tradingagents/upstream-status.json` 的 **7 天 TTL**。
 - TTL 的确定性执行器是 `scripts/check_tradingagents_upstream.py`：距离 `last_checked_at` 不足 7 天时不访问上游；达到或超过 7 天后才检查当前 `main` SHA，并可刷新状态文件。
 - SHA 变化时标记 `review_required`，当次仍使用 CIS 已验证稳定基线。
@@ -15,6 +14,15 @@
 - 用户明确要求“检查 TradingAgents 更新”时可忽略 TTL 立即检查。
 - **不使用定时 GitHub Actions 监控 TradingAgents 上游。**
 - 上游变化不得自动覆盖 CIS 方法论。
+
+### 原版远程运行安全边界
+
+原版远程执行仍以 upstream 当前 `main` 为目标，但 0.4.5 增加两层安全门：
+
+1. 第三方 TradingAgents 代码只在 `contents: read` Job 中执行；仓库写回由独立 trusted publisher 完成，publisher 不持有 LLM Secret，也不执行第三方代码。
+2. Cloud/secret-backed 运行只有在当前 upstream SHA 与 `reviewed_sha` 一致时才允许；未审查新 SHA 只能使用零密钥 Ollama smoke test。
+
+OpenAI-compatible provider 也使用固定凭据路由：NVIDIA endpoint 只使用 `NVIDIA_API_KEY`；自定义 HTTPS endpoint 只使用 `OPENAI_COMPATIBLE_API_KEY`，不跨 provider fallback。
 
 ### 原版运行状态分层
 
@@ -43,6 +51,7 @@ Anthropic `financial-services` 是 CIS 首选专业金融 Skill 上游，用于 
 - 代码/Skill 可用不等于数据已授权或实时；
 - 行情、财报、新闻、宏观、机构持仓、资金流必须记录实际来源和 `as_of`；
 - 短线行情必须记录 exchange、quote timestamp，并由 CIS 验证 regular / premarket / afterhours / last_close 语义及 quote freshness；
+- active quote 的 `quote_timestamp` 本身必须属于所声明的 session，不能把盘前旧报价包装成 regular live；
 - 历史研究必须使用 point-in-time 数据，禁止 look-ahead leakage；
 - 数据不可用时可降级到公开资料/用户资料，但必须说明覆盖限制。
 
