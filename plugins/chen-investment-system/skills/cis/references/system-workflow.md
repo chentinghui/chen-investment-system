@@ -19,16 +19,19 @@
 ```text
 analysis_timestamp
 quote_timestamp
-market_session
+exchange: XNAS | XNYS
+market_session（由 exchange + timestamp 校验）
 price_type
 current_price
+quote_max_age_seconds（活跃时段）
+quote_session_date（closed / last_close）
 ```
 
 ## 2. Evidence
 
 登记来源等级、发布日期、资料期间、提取日期、事实、限制和冲突。历史任务必须防前视偏差。
 
-短线任务执行 Evidence Freshness Guard：价格/成交/技术必须有明确数据截止时间，Breaking News / Catalyst 必须检查当前最新公开信息；新鲜度不清楚时 Evidence Audit 不得 `pass`。
+短线任务执行 Evidence Freshness Guard：价格/成交/技术必须有明确数据截止时间，Breaking News / Catalyst 必须检查当前最新公开信息；新鲜度不清楚时 Evidence Audit 不得 `pass`。活跃时段 stale quote、交易时段冲突或错误 last-close session 均不能通过 Price Context。
 
 ## 3. Core Research
 
@@ -71,11 +74,13 @@ earnings  → fundamentals + catalyst_macro + risk_resilience
 - 70%–<85%：provisional；
 - >=85% + Audit pass + Risk pass + Critical Dimensions/Context Checks 完整：才可 decision_grade。
 
+CIS Research Grade 与 Tactical Setup Readiness 分开报告。短线 setup 可处于 `eligible_setup`，但不能借此伪造缺失的长期研究 coverage；反过来，高 CIS Score 也不能覆盖 Tactical Gate 的失效/追价/赔率问题。
+
 ## 7. Market Regime（按需）
 
 当前市场环境会改变交易计划时，输出 `risk_on / neutral / risk_off / insufficient`。Regime 不直接机械触发买卖。
 
-每个已使用 Regime 信号必须登记独立 `signal_as_of`。缺失日期、未来日期或超过 baseline 新鲜度容忍范围时，Regime 降级为 `insufficient` 或拒绝输入。
+必须显式选择 `regime_profile`：`us_broad_v1`（SPY + S&P500 breadth）或 `us_nasdaq_v1`（QQQ + Nasdaq-100 breadth）。每个信号登记独立 `signal_as_of`。missing/stale 信号先排除，再按 fresh coverage 判断是否仍能分类；未来日期直接拒绝。
 
 ## 8. 四层交易框架 + Tactical R/R Gate
 
@@ -84,15 +89,17 @@ earnings  → fundamentals + catalyst_macro + risk_resilience
 对 `decision_context=tactical` 或明确短线做差价的买入问题，再执行 `scripts/tactical_setup_gate.py`：
 
 ```text
-Price/Session Guard
+Exchange-aware Price/Session Guard
+Quote Freshness Guard
 Entry Zone
 Chase Limit
-Stop / Invalidation
+Stop / Invalidation + Stop Type
 Target 1 / Target 2
 Reward / Risk
+Setup Lifecycle
 ```
 
-Quality Score 高不代表当前价格可追。越过 Chase Limit 时输出 `blocked_do_not_chase`；未进入 Entry Zone 时输出 `wait_for_entry`。
+Quality Score 高不代表当前价格可追。越过 Chase Limit → `blocked_do_not_chase`；未进入 Entry Zone → `wait_for_entry`；Stop 已失效 → `invalidated_reprice_required`；Target 1 已实现/越过 → `setup_expired_reprice_required`；确认型 Stop 尚未确认 → `blocked_pending_stop_confirmation`。
 
 ## 9. ETF / QDII / Portfolio Gate
 
@@ -105,9 +112,9 @@ Quality Score 高不代表当前价格可追。越过 Chase Limit 时输出 `blo
 短线结论必须区分：
 
 ```text
-公司质量/研究姿态
+CIS Research Grade / 公司质量
 vs
-当前 Tactical Setup 状态
+Tactical Setup Readiness / 当前交易计划状态
 ```
 
 避免把“好公司”直接等同于“现在值得买”。
@@ -124,7 +131,7 @@ extensions/research_tooling/
 - 新规则/因子/阈值验证 → `backtest_factor_strategy.py`；
 - 用户明确要求记录/复盘/校准 → Prediction / Evaluation 工具。
 
-这些外围工具不属于默认单股分析链，故障不得阻塞 CIS Core，也不得自动修改生产规则。可选 Prediction/Evaluation 的默认观察周期调整为短线导向的 5/20/60 交易日；仍保持 experimental，不作为 CIS Core 的必要条件。
+这些外围工具不属于默认单股分析链，故障不得阻塞 CIS Core，也不得自动修改生产规则。可选 Prediction/Evaluation 的默认观察周期为短线导向的 5/20/60 交易日；仍保持 experimental，不作为 CIS Core 的必要条件。
 
 ## 12. 原版 TradingAgents 测试路径
 
