@@ -10,6 +10,7 @@ SKILLS_ROOT = ROOT.parent
 SKILL = ROOT / "SKILL.md"
 REFS = ROOT / "references"
 REPO_ROOT = ROOT.parents[3]
+EXT = REPO_ROOT / "extensions" / "research_tooling"
 REMOTE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "cis-tradingagents.yml"
 DELETED_UPSTREAM_WATCH = REPO_ROOT / ".github" / "workflows" / "cis-tradingagents-upstream-watch.yml"
 UPSTREAM_STATUS = REPO_ROOT / "runtime" / "tradingagents" / "upstream-status.json"
@@ -47,36 +48,23 @@ def main() -> int:
     orchestration = read(REFS / "agent-orchestration.md")
     agent_registry = read(REFS / "agent-registry.md")
     scoring = read(REFS / "scoring-engine.md")
-    quant = read(REFS / "quant-engine.md")
-    backtest = read(REFS / "backtest-validation.md")
     regime = read(REFS / "market-regime.md")
-    performance = read(REFS / "performance-loop.md")
     remote_workflow = read(REMOTE_WORKFLOW)
     upstream_status_text = read(UPSTREAM_STATUS)
     plugin_json_text = read(PLUGIN_JSON)
     readme = read(README)
-
-    score_script = read(ROOT / "scripts" / "score_cis.py")
-    quant_script = read(ROOT / "scripts" / "quant_factor_engine.py")
-    backtest_script = read(ROOT / "scripts" / "backtest_factor_strategy.py")
-    regime_script = read(ROOT / "scripts" / "classify_market_regime.py")
-    performance_script = read(ROOT / "scripts" / "evaluate_cis_predictions.py")
-    ttl_script = read(ROOT / "scripts" / "check_tradingagents_upstream.py")
-    ledger_script = read(ROOT / "scripts" / "prediction_ledger.py")
-    local_ta = read(ROOT / "scripts" / "run_tradingagents.py")
-    remote_ta = read(ROOT / "scripts" / "run_tradingagents_remote.py")
-    score_tests = read(ROOT / "scripts" / "test_score_cis.py")
-    hardening_tests = read(ROOT / "scripts" / "test_hardening.py")
-
-    if DELETED_UPSTREAM_WATCH.exists():
-        raise AssertionError("scheduled TradingAgents upstream watch must remain removed")
+    extension_readme = read(EXT / "README.md")
 
     for text, label in [
-        (skill, "CIS skill"), (workflow, "system workflow"), (registry, "module registry"),
-        (routing, "module routing"), (external, "external modules"),
-        (methodology, "TradingAgents methodology"), (scoring, "scoring engine"),
-        (quant, "quant policy"), (backtest, "backtest policy"), (regime, "market regime"),
-        (performance, "performance loop"), (readme, "README"),
+        (skill, "CIS skill"),
+        (workflow, "system workflow"),
+        (registry, "module registry"),
+        (routing, "module routing"),
+        (external, "external modules"),
+        (methodology, "TradingAgents methodology"),
+        (scoring, "scoring engine"),
+        (regime, "market regime"),
+        (readme, "README"),
     ]:
         require_version(text, version, label)
 
@@ -85,36 +73,69 @@ def main() -> int:
         raise AssertionError(f"plugin metadata version must equal {version}")
 
     require(skill, [
-        "Fail-Closed", "Critical Dimension Gate", "check_tradingagents_upstream.py",
-        "Prediction Ledger", "execution_status", "research_quality", "Quant Factor Ranking",
-        "同一 as_of", "CIS 不自动下单",
+        "CIS Core", "Optional Research Tooling", "extensions/research_tooling/",
+        "Fail-Closed Evidence", "Critical Dimension Gate", "check_tradingagents_upstream.py",
+        "execution_status", "research_quality", "CIS 不自动下单",
     ], "CIS skill")
-    require(workflow, ["fail-closed", "Critical Dimension Gate", "Prediction Ledger", "out-of-sample", "execution_status"], "workflow")
-    require(registry, ["TradingAgents TTL Checker", "Quant Factor Ranking Engine", "Prediction Ledger", "fail_closed_gate"], "module registry")
-    require(routing, ["Critical Dimension", "同一 `as_of`", "max_drawdown_1y", "Prediction Ledger", "execution_status"], "module routing")
-    require(external, ["check_tradingagents_upstream.py", "execution_status", "evidence_audit_status", "research_quality", "不使用定时 GitHub Actions"], "external modules")
+    require(workflow, ["Core Research", "Optional Research Tooling", "extensions/research_tooling/", "fail-closed"], "workflow")
+    require(registry, ["CIS Core", "Extension", "Quant Factor Ranking Engine", "Prediction / Evaluation"], "module registry")
+    require(routing, ["Optional Research Tooling", "extensions/research_tooling/", "Critical Dimension", "7 天 TTL"], "module routing")
+    require(external, ["7 天 TTL", "execution_status", "research_quality", "Optional Research Tooling", "Market Regime"], "external modules")
     require(methodology, ["7天 TTL", "check_tradingagents_upstream.py", "Critical Dimension", "execution_status"], "TradingAgents methodology")
     require(tradingagents, ["显式测试", "external_decision_candidate", "execution_status", "research_quality", "7 天 TTL"], "original TradingAgents runtime")
-    require(anthropic, ["dcf-model", "comps-analysis", "earnings-analysis", "thesis-tracker"], "Anthropic policy")
-    require(orchestration, ["多角色独立性", "Quant", "Market Regime", "Performance", "最终综合顺序"], "orchestration")
-    require(agent_registry, ["Prediction Ledger", "Critical Dimension Gate", "TradingAgents TTL Checker", "Research Manager"], "agent registry")
-    require(scoring, ["audit_status = unverified", "risk_status  = unverified", "Critical Dimension Gate", "valuation", "decision_grade"], "scoring")
-    require(quant, ["quant_score", "cis_score", "experimental_uncalibrated", "point-in-time", "max_drawdown_1y"], "quant policy")
-    require(backtest, ["one_way_turnover", "out_of_sample", "交易成本", "换手"], "backtest policy")
+    require(anthropic, ["dcf-model", "comps-analysis", "earnings-analysis", "thesis-tracker", "上游 `main`"], "Anthropic policy")
+    require(orchestration, ["Optional Research Tooling", "多角色独立性", "最终综合顺序"], "orchestration")
+    require(agent_registry, ["CIS Core", "Optional Research Tooling", "Research Manager", "TradingAgents TTL Checker"], "agent registry")
+    require(scoring, ["audit_status = unverified", "risk_status  = unverified", "Critical Dimension Gate", "decision_grade"], "scoring")
     require(regime, ["JSON boolean", "high_yield_oas_bps", "realized_vol_20d", "experimental_baseline"], "market regime")
-    require(performance, ["predictions.jsonl", "append-only", "horizon", "dimension", "禁止"], "performance loop")
+    require(extension_readme, ["CIS Core", "可选外围研究工具", "故障不得阻塞 CIS Core"], "research tooling extension")
+
+    core_scripts = ROOT / "scripts"
+    required_core = [
+        "score_cis.py",
+        "analyze_etf_premium.py",
+        "classify_market_regime.py",
+        "check_tradingagents_upstream.py",
+        "run_tradingagents.py",
+        "run_tradingagents_remote.py",
+        "validate_cis.py",
+        "test_score_cis.py",
+        "test_analyze_etf_premium.py",
+        "test_hardening.py",
+        "test_systematic_layers.py",
+    ]
+    for name in required_core:
+        read(core_scripts / name)
+
+    optional_names = [
+        "quant_factor_engine.py",
+        "backtest_factor_strategy.py",
+        "prediction_ledger.py",
+        "record_cis_research.py",
+        "settle_due_predictions.py",
+        "evaluate_cis_predictions.py",
+    ]
+    for name in optional_names:
+        if (core_scripts / name).exists():
+            raise AssertionError(f"optional research tool leaked into CIS Core: {name}")
+        read(EXT / name)
+    read(EXT / "test_research_tooling.py")
+
+    score_script = read(core_scripts / "score_cis.py")
+    regime_script = read(core_scripts / "classify_market_regime.py")
+    ttl_script = read(core_scripts / "check_tradingagents_upstream.py")
+    local_ta = read(core_scripts / "run_tradingagents.py")
+    remote_ta = read(core_scripts / "run_tradingagents_remote.py")
+    score_tests = read(core_scripts / "test_score_cis.py")
+    hardening_tests = read(core_scripts / "test_hardening.py")
 
     require(score_script, ["audit_status: str = \"unverified\"", "risk_status: str = \"unverified\"", "CRITICAL_DIMENSIONS", "critical_dimensions_missing"], "score script")
-    require(quant_script, ["transform_value", "validate_as_of", "same as_of", '"transform": "abs"'], "quant script")
-    require(backtest_script, ["one_way_turnover", "transaction_cost", "metrics_by_segment", "out_of_sample"], "backtest script")
     require(regime_script, ["strict_bool", "high_yield_oas_bps", "realized_vol_20d", "SIGNAL_WEIGHTS"], "regime script")
-    require(performance_script, ["horizon_bucket", "dimension_diagnostics", "max_drawdown", "falsifier_triggered"], "performance script")
     require(ttl_script, ["should_check", "apply_check", "check_ttl_days", "fetch_current_sha"], "TTL script")
-    require(ledger_script, ["event_type", "prediction", "outcome", "research_id", "append_event"], "prediction ledger")
     require(local_ta, ["execution_status", "evidence_audit_status", "research_quality", "external_decision_candidate"], "local TradingAgents adapter")
     require(remote_ta, ["execution_status", "evidence_audit_status", "research_quality", "external_decision_candidate"], "remote TradingAgents adapter")
     require(score_tests, ["unittest.TestCase", "test_defaults_are_fail_closed", "test_missing_valuation_cannot_be_decision_grade"], "score tests")
-    require(hardening_tests, ["TradingAgentsTTLTests", "PredictionLedgerTests", "TradingAgentsAdapterTests"], "hardening tests")
+    require(hardening_tests, ["TradingAgentsTTLTests", "TradingAgentsAdapterTests"], "hardening tests")
 
     require(remote_workflow, [
         "workflow_dispatch", "request_id:", "ticker:", "analysis_date:",
@@ -125,7 +146,13 @@ def main() -> int:
     upstream_status = json.loads(upstream_status_text)
     if int(upstream_status.get("check_ttl_days", 0)) != 7:
         raise AssertionError("TradingAgents check_ttl_days must equal 7")
-    require(upstream_status_text, ["observed_sha", "reviewed_sha", "review_status", "last_checked_at", "next_check_not_before", "use_time_check_with_7_day_ttl_stable_baseline"], "upstream status")
+    require(upstream_status_text, [
+        "observed_sha", "reviewed_sha", "review_status", "last_checked_at",
+        "next_check_not_before", "use_time_check_with_7_day_ttl_stable_baseline",
+    ], "upstream status")
+
+    if DELETED_UPSTREAM_WATCH.exists():
+        raise AssertionError("scheduled TradingAgents upstream watch must remain removed")
 
     for relative in re.findall(r"`(references/[^`]+\.md)`", skill):
         if not (ROOT / relative).is_file():
@@ -136,7 +163,7 @@ def main() -> int:
         if path.exists():
             raise AssertionError(f"third-party source must not be bundled directly: {path.name}")
 
-    print(f"CIS {version} plugin validation passed")
+    print(f"CIS {version} core/extension validation passed")
     return 0
 
 
