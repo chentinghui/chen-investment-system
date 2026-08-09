@@ -1,6 +1,6 @@
 # ChatGPT-native TradingAgents Methodology
 
-本文件定义 CIS 0.4.0 的默认股票研究方法。它吸收 `TauricResearch/TradingAgents` 的多角色结构，但默认由当前 ChatGPT 会话直接执行，不要求运行 TradingAgents Python，也不要求外部 LLM API。
+本文件定义 CIS 0.4.1 的默认股票研究方法。它吸收 `TauricResearch/TradingAgents` 的多角色结构，但默认由当前 ChatGPT 会话直接执行，不要求运行 TradingAgents Python，也不要求外部 LLM API。
 
 ## 核心原则
 
@@ -8,6 +8,7 @@
 - ChatGPT 直接承担多角色研究编排，并使用本次可核验的公开数据、连接器数据和用户资料。
 - 不声称“运行了原版 TradingAgents”，除非本次确实执行上游 Python 图并通过结果校验。
 - 方法论输出只是 CIS 的研究输入；CIS 保留证据门、风险门、八维评分、Market Regime、四层交易、ETF/QDII纪律、组合门和最终中文结论。
+- `tradingagents-methodology.md` 是 CIS 的已验证稳定基线；上游变化不会未经审查直接覆盖它。
 
 ## 默认角色结构
 
@@ -94,25 +95,22 @@ Quant 不能替代 Bull/Bear、估值、风险或证据审计。
 
 原版运行路径见 `tradingagents.md`，远程执行每次拉取上游当前 `main`。
 
-## 上游更新同步纪律
+## 上游检查：7天 TTL
 
-TradingAgents 上游变化不能直接覆盖本方法论：
+TradingAgents 上游不再使用定时 GitHub Actions 监控，也不在每次股票分析时重复访问。
 
-```text
-上游 main SHA 变化
-  ↓
-自动检测 → review_required
-  ↓
-审查 Agent / Prompt / Graph / Tool / Risk 变化
-  ↓
-只吸收明确提高 CIS 质量且不破坏现有质量门的变化
-  ↓
-更新本文件 + reviewed_sha
-```
+状态文件：`runtime/tradingagents/upstream-status.json`。
 
-上游状态：`runtime/tradingagents/upstream-status.json`。
+执行规则：
 
-自动检测：`.github/workflows/cis-tradingagents-upstream-watch.yml`。
+1. 读取 `last_checked_at` 与 `check_ttl_days`。
+2. 距离 `last_checked_at` **不足 7 天**：不访问 TradingAgents 上游，直接使用 CIS 已验证稳定基线。
+3. 距离 `last_checked_at` **达到或超过 7 天**：由下一次实际股票研究触发一次轻量上游 SHA 检查。
+4. 如果当前 `main` SHA 与 `observed_sha/reviewed_sha` 相同，只刷新检查时间；无需读取完整上游代码。
+5. 如果 SHA 发生变化，标记 `review_required`，并仅在需要时审查 Agent / Prompt / Graph / Tool / Risk 等方法论相关变化。
+6. 新逻辑未经审查不得覆盖本文件；当次研究继续使用稳定基线。
+7. 如果上游暂时不可访问，记录 `upstream_check=unavailable`，但不阻塞正常研究；下次超过 TTL 的研究可再次尝试。
+8. 用户明确要求“检查 TradingAgents 是否更新”时，可忽略 TTL 立即检查。
 
 ## 证据纪律
 
