@@ -5,15 +5,16 @@ As-of: 2026-08-09. Reverify repository state, licenses, dependencies, paths, acc
 ## Current architecture — CIS 0.4.5
 
 - `cis` is the sole user-facing entrypoint and final quality-control layer.
-- `TauricResearch/TradingAgents` methodology is the default general-purpose stock/issuer research and external decision-candidate method.
+- `TauricResearch/TradingAgents` methodology is the default general-purpose stock/issuer research method.
 - Anthropic `financial-services` is the preferred professional Skill upstream for DCF, Comps, three-statement models, earnings, model audit/update, competitive analysis, thesis tracking and catalysts.
-- `QuantConnect/Lean` is the accepted external strategy-level quant/backtest engine; CIS owns only the adapter and validation contract.
 - CIS-owned rules remain authoritative for evidence, scoring, trading framework, ETF/QDII, portfolio context and final Chinese posture.
+- Quant/Backtest/Prediction/Evaluation remain optional repository-owned research tooling.
+- CIS currently has **no external strategy-level trading/backtest engine connected**.
 - `stock-research-assistant` is only a legacy alias that hands off to CIS.
 
 ## Accepted external capabilities
 
-### TradingAgents — accepted as default research core methodology
+### TradingAgents — accepted as default research methodology
 
 Accepted for:
 
@@ -22,8 +23,7 @@ Accepted for:
 - research manager synthesis;
 - trader proposal;
 - risk-management debate;
-- portfolio-manager external candidate decision when original runtime is explicitly executed;
-- persistent decision-log/reflection when the installed version provides it.
+- portfolio-manager external candidate decision when original runtime is explicitly executed.
 
 Boundary:
 
@@ -33,44 +33,25 @@ Boundary:
 - Code freshness does not imply real-time data freshness.
 - Historical analysis must preserve `analysis_date` and prevent look-ahead leakage.
 
-Verification recorded 2026-08-09:
-
-- upstream `main` exists;
-- README reports v0.3.1 (2026-07);
-- README documents package use via `TradingAgentsGraph(...).propagate(ticker, date)`;
-- repository LICENSE is Apache License 2.0.
-
 ### Anthropic Financial Services — accepted as professional-method upstream
 
-Use the smallest relevant Skill. Preserve source/as-of discipline and adapt Claude/Cowork/MCP/Office-specific instructions to callable tools in the current environment.
+Use the smallest relevant Skill. Preserve source/as-of discipline and adapt tool-specific instructions to callable tools in the current environment.
 
 Boundary: it supplies professional subproblem methods, not final CIS actions.
 
-### QuantConnect LEAN — accepted as external quant/backtest engine
+## Quant / Backtest ownership boundary
 
-Accepted for:
+Current repository-owned capabilities:
 
-- event-driven strategy backtests;
-- technical/trend/position-sizing rule validation;
-- stocks / ETFs / options strategy paths when the LEAN project and data support them;
-- order, fee, portfolio path and strategy-performance statistics;
-- future strategy-level validation before a new CIS rule is promoted from `experimental`.
+- `extensions/research_tooling/quant_factor_engine.py` for cross-sectional candidate ranking;
+- `extensions/research_tooling/backtest_factor_strategy.py` for lightweight `date,ticker,score,forward_return` validation;
+- Prediction/Evaluation tools for research tracking and calibration.
 
-Implementation boundary:
+These tools do not constitute a full event-driven trading engine. If a requested strategy requires order simulation, complex position paths, options lifecycle handling, or other unsupported execution semantics, CIS must disclose the limitation instead of silently substituting the baseline evaluator.
 
-- upstream source stays external at `QuantConnect/Lean`;
-- do **not** vendor, copy or git-submodule LEAN into CIS;
-- CIS maintains `integrations/lean/cis_lean_adapter.py` and `references/quantconnect-lean.md`;
-- adapter v1 uses the official Lean CLI local-backtest path plus result-JSON parsing;
-- `execution_status=success` is not `research_quality=accepted`;
-- LEAN has `decision_authority=none` and cannot change production rules automatically;
-- current integration does not enable live trading or Broker execution.
+## Buffett / other optional lenses
 
-As of 2026-08-09, QuantConnect's official Lean CLI documentation states that local engine commands use Docker and the CLI requires membership in a paid organization tier. Account, organization workspace, data licensing and credentials remain external to CIS.
-
-### Buffett — optional external lens
-
-Useful for business quality, management, moat, capital allocation and long-term owner discipline. It does not replace TradingAgents or Anthropic professional models.
+Useful external frameworks may be added as non-authoritative research perspectives. They do not replace CIS quality gates.
 
 ## CIS ownership boundary
 
@@ -87,8 +68,6 @@ External systems do **not** replace:
 - personal investor rules;
 - final Chinese synthesis, falsification conditions and review lifecycle.
 
-LEAN additionally does not replace the CIS Backtest Validation Policy. Its outputs remain historical evidence subject to bias, execution-realism, out-of-sample and robustness review.
-
 ## Fallback policy
 
 CIS self-authored expert agents are retained, but only as:
@@ -99,11 +78,7 @@ CIS self-authored expert agents are retained, but only as:
 
 They should not duplicate a successful TradingAgents run by default.
 
-For quantitative validation:
-
-- LEAN is preferred for strategy-level event-driven backtests;
-- `extensions/research_tooling/backtest_factor_strategy.py` remains a lightweight cross-sectional baseline evaluator;
-- do not silently substitute the baseline evaluator when the user explicitly asked for LEAN.
+For quantitative validation, use the smallest repository-owned research tool that correctly models the question. Do not represent an unsupported execution model as if it were validated.
 
 ## Not bundled / deferred
 
@@ -111,11 +86,10 @@ For quantitative validation:
 |---|---|---|
 | TradingAgents | External dependency/methodology; do not vendor full source by default | Stay current with active upstream; use stable methodology/adapter and verify runtime. |
 | Anthropic `financial-services` | Live upstream preferred; snapshot optional | Prefer current Skill files; vendor only with upstream SHA, date, attribution and license review. |
-| QuantConnect LEAN | **Accepted external quant engine; adapter only** | Adds strategy-level backtest capability without turning CIS into a trading-engine fork. |
 | `agi-now/buffett-skills` | External optional dependency | License status must be reverified before redistribution. |
 | FinRobot | Defer | Large functional overlap with TradingAgents + Anthropic; avoid duplicate decision/model stacks. |
-| Microsoft Qlib / RD-Agent | Defer | LEAN now owns the default strategy-level quant/backtest role; add ML research only when a distinct need exists. |
-| NautilusTrader | Defer | Overlaps LEAN's trading-engine role; avoid maintaining two default execution stacks. |
+| Microsoft Qlib / RD-Agent | Defer | Add ML research only when it supplies a distinct Alpha-discovery capability and has a clear validation contract. |
+| NautilusTrader | Defer | Do not add a second execution stack without a concrete need and maintenance plan. |
 | OpenBB | Future optional data aggregation layer | Useful as data infrastructure; not needed as a decision engine. |
 
 ## Admission standard
