@@ -16,6 +16,13 @@ WEIGHTS = {
     "risk_resilience": 10,
 }
 
+CRITICAL_DIMENSIONS = {
+    "generic": ("fundamentals", "valuation", "risk_resilience"),
+    "long_term": ("fundamentals", "growth", "valuation", "risk_resilience"),
+    "tactical": ("technical", "risk_resilience"),
+    "earnings": ("fundamentals", "catalyst_macro", "risk_resilience"),
+}
+
 
 @dataclass(frozen=True)
 class ScoreResult:
@@ -24,7 +31,9 @@ class ScoreResult:
     grade: str
     research_posture: str
     missing_dimensions: tuple[str, ...]
+    missing_critical_dimensions: tuple[str, ...]
     blocked_reasons: tuple[str, ...]
+    decision_context: str
 
     def as_dict(self) -> dict:
         return {
@@ -33,14 +42,20 @@ class ScoreResult:
             "grade": self.grade,
             "research_posture": self.research_posture,
             "missing_dimensions": list(self.missing_dimensions),
+            "missing_critical_dimensions": list(self.missing_critical_dimensions),
             "blocked_reasons": list(self.blocked_reasons),
+            "decision_context": self.decision_context,
         }
 
 
-def _validate(scores: Mapping[str, float | int | None]) -> None:
+def _validate(scores: Mapping[str, float | int | None], decision_context: str) -> None:
     unknown = set(scores) - set(WEIGHTS)
     if unknown:
         raise ValueError(f"unknown dimensions: {', '.join(sorted(unknown))}")
+    if decision_context not in CRITICAL_DIMENSIONS:
+        raise ValueError(
+            "decision_context must be one of: " + ", ".join(sorted(CRITICAL_DIMENSIONS))
+        )
     for name, value in scores.items():
         if value is None:
             continue
@@ -65,30 +80,45 @@ def _posture(score: Optional[float], grade: str) -> str:
 def calculate_score(
     scores: Mapping[str, float | int | None],
     *,
-    audit_status: str = "pass",
+    audit_status: str = "unverified",
+    risk_status: str = "unverified",
     risk_override: str = "none",
     critical_blocked: bool = False,
+    decision_context: str = "generic",
 ) -> ScoreResult:
-    _validate(scores)
+    """Calculate a CIS score using fail-closed quality gates.
+
+    `decision_grade` is available only when coverage is >=85%, the evidence audit
+    and risk review explicitly pass, and all context-critical dimensions exist.
+    Missing dimensions are never imputed as zero.
+    """
+    _validate(scores, decision_context)
 
     available = {k: float(v) for k, v in scores.items() if v is not None}
     available_weight = sum(WEIGHTS[k] for k in available)
     coverage_pct = float(available_weight)
 
     missing = tuple(k for k in WEIGHTS if k not in available)
+    required = CRITICAL_DIMENSIONS[decision_context]
+    missing_critical = tuple(k for k in required if k not in available)
+
     weighted = (
         sum(available[k] * WEIGHTS[k] for k in available) / available_weight
         if available_weight
         else None
     )
 
-    blocked = []
-    if audit_status == "unresolved":
-        blocked.append("audit_unresolved")
+    blocked: list[str] = []
+    if audit_status != "pass":
+        blocked.append("audit_not_passed")
+    if risk_status != "pass":
+        blocked.append("risk_review_not_passed")
     if risk_override == "block":
         blocked.append("risk_override_block")
     if critical_blocked:
         blocked.append("critical_dimension_blocked")
+    if missing_critical:
+        blocked.append("critical_dimensions_missing")
 
     if coverage_pct < 70:
         grade = "insufficient"
@@ -97,15 +127,15 @@ def calculate_score(
         grade = "provisional"
         reported_score = round(weighted, 1) if weighted is not None else None
     else:
-        grade = "decision_grade"
         reported_score = round(weighted, 1) if weighted is not None else None
-
-    if blocked and grade == "decision_grade":
-        grade = "provisional"
+        grade = "decision_grade" if not blocked else "provisional"
 
     posture = _posture(reported_score, grade)
     if blocked:
-        posture = "证据不足" if "audit_unresolved" in blocked else f"{posture}（风险门未通过）"
+        if "audit_not_passed" in blocked or "critical_dimensions_missing" in blocked:
+            posture = "证据不足"
+        else:
+            posture = f"{posture}（风险门未通过）"
 
     return ScoreResult(
         score=reported_score,
@@ -113,7 +143,9 @@ def calculate_score(
         grade=grade,
         research_posture=posture,
         missing_dimensions=missing,
+        missing_critical_dimensions=missing_critical,
         blocked_reasons=tuple(blocked),
+        decision_context=decision_context,
     )
 
 
@@ -127,9 +159,11 @@ def main() -> int:
 
     result = calculate_score(
         payload.get("scores", {}),
-        audit_status=payload.get("audit_status", "pass"),
+        audit_status=payload.get("audit_status", "unverified"),
+        risk_status=payload.get("risk_status", "unverified"),
         risk_override=payload.get("risk_override", "none"),
         critical_blocked=bool(payload.get("critical_blocked", False)),
+        decision_context=payload.get("decision_context", "generic"),
     )
     print(json.dumps(result.as_dict(), ensure_ascii=False, indent=2))
     return 0
