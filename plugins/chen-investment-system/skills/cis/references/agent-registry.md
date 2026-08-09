@@ -1,4 +1,4 @@
-# CIS 0.4.2 Agent / Engine 登记表
+# CIS 0.4.5 Agent / Engine 登记表
 
 CIS 默认由当前 ChatGPT 会话执行 TradingAgents 多角色方法论；筛选、回测和绩效工具是独立外围研发能力，不属于默认单股分析链。
 
@@ -22,12 +22,15 @@ CIS 默认由当前 ChatGPT 会话执行 TradingAgents 多角色方法论；筛�
 | 模块/Agent | 主要职责 | 状态 |
 |---|---|---|
 | 陈氏投资分析师 | Runtime Guard、路由、最终中文结论 | **始终启用** |
-| Evidence Audit | 来源、时效、前视偏差、冲突 | **fail-closed** |
-| Risk Review | 尾部风险、论点失效、集中度/流动性 | **fail-closed** |
+| Evidence Audit | 来源、时效、前视偏差、冲突；`audit_status=pass|unresolved|fail` | **fail-closed** |
+| Risk Review | 尾部风险、论点失效、集中度/流动性；`risk_status=pass|unresolved|fail` | **fail-closed** |
 | Critical Dimension Gate | 按 decision_context 检查关键维度 | **独立质量门** |
+| Tactical Context Checks | Price Context + Catalyst/Event Review 完成检查 | **短线质量门** |
 | CIS Scoring | 八维 coverage + weighted score | 生产启发式、待校准 |
 | Market Regime Layer | 趋势/广度/波动/信用环境分类 | 按需 |
 | TradingAgents TTL Checker | 每7天到期后按需检查上游 SHA | installed |
+| Price / Session Guard | US-equity common session baseline + quote freshness | tactical installed |
+| Tactical R/R Gate | Entry / Stop / Target / R/R + persistent invalidation | tactical baseline |
 | ETF / QDII Gate | 产品身份、溢价、申赎、时差、流动性 | installed |
 | Portfolio Gate | 成本、权重、集中度、约束、资金需求 | 按需 |
 
@@ -54,7 +57,7 @@ evidence_audit_status
 research_quality
 ```
 
-`remote_ready` / `installed_ready` 只能表示程序完成，不能表示结论已被 CIS 接受。
+`remote_ready` / `installed_ready` 只能表示程序完成，不能表示结论已被 CIS 接受。远程 Runner 的第三方执行 Job 只有 `contents: read`；仓库写回由独立 trusted publisher 完成。Secret-backed 运行只允许已审查 upstream SHA。
 
 ## 权限边界
 
