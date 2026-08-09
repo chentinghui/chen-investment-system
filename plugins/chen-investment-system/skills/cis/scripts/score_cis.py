@@ -187,6 +187,7 @@ def calculate_score(
     if blocked:
         if (
             "audit_not_passed" in blocked
+            or "critical_dimension_blocked" in blocked
             or "critical_dimensions_missing" in blocked
             or "tactical_checks_incomplete" in blocked
         ):

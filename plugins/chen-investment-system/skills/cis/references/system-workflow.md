@@ -1,4 +1,4 @@
-# CIS 0.4.4 系统流程
+# CIS 0.4.5 系统流程
 
 ## 0. Runtime Guard
 
@@ -6,7 +6,7 @@
 2. 若可访问 GitHub，核验 `chentinghui/chen-investment-system` 当前 `main`。
 3. 读取 `tradingagents-methodology.md` 作为股票默认研究方法。
 4. 读取 `runtime/tradingagents/upstream-status.json`。TradingAgents 7 天 TTL 未到时使用稳定基线；到期后的下一次股票研究轻量检查上游 `main` SHA。新 SHA 标记 `review_required`，未经审查不得采用。
-5. 原版 TradingAgents 仅在用户明确要求运行/测试时启动；执行成功不等于研究质量通过。
+5. 原版 TradingAgents 仅在用户明确要求运行/测试时启动；执行成功不等于研究质量通过。Secret-backed 远程运行要求当前 upstream SHA 已审查，第三方执行 Job 不拥有仓库写权限。
 6. 专业金融子问题按需路由 Anthropic Financial Services。
 7. Quant / Backtest / Prediction / Evaluation 不属于日常单股 Core，只有对应任务才从 `extensions/research_tooling/` 调用。
 
@@ -20,7 +20,7 @@
 analysis_timestamp
 quote_timestamp
 exchange: XNAS | XNYS
-market_session（由 exchange + timestamp 校验）
+market_session（由时间戳的 US-equity session baseline 校验）
 price_type
 current_price
 quote_max_age_seconds（活跃时段）
@@ -31,7 +31,7 @@ quote_session_date（closed / last_close）
 
 登记来源等级、发布日期、资料期间、提取日期、事实、限制和冲突。历史任务必须防前视偏差。
 
-短线任务执行 Evidence Freshness Guard：价格/成交/技术必须有明确数据截止时间，Breaking News / Catalyst 必须检查当前最新公开信息；新鲜度不清楚时 Evidence Audit 不得 `pass`。活跃时段 stale quote、交易时段冲突或错误 last-close session 均不能通过 Price Context。
+短线任务执行 Evidence Freshness Guard：价格/成交/技术必须有明确数据截止时间，Breaking News / Catalyst 必须检查当前最新公开信息；新鲜度不清楚时 Evidence Audit 不得 `pass`。活跃时段 stale quote、分析 session 与 quote observation session 冲突、错误 last-close session 均不能通过 Price Context。
 
 ## 3. Core Research
 
@@ -58,6 +58,14 @@ DCF / Comps / 三表 / 模型审计 / Earnings / Competitive / Thesis / Catalyst
 ## 5. Evidence Audit + Risk Gate
 
 Evidence 与 Risk 都采用 fail-closed：未明确 `pass` 就不能进入 `decision_grade`。
+
+```text
+audit_status = unverified | pass | unresolved | fail
+risk_status  = unverified | pass | unresolved | fail
+risk_override = none | block
+```
+
+Agent 层不再使用 `conditional` / `caution` 作为机器枚举。
 
 ## 6. Critical Dimension Gate + CIS 八维评分
 
@@ -89,21 +97,23 @@ CIS Research Grade 与 Tactical Setup Readiness 分开报告。短线 setup 可�
 对 `decision_context=tactical` 或明确短线做差价的买入问题，再执行 `scripts/tactical_setup_gate.py`：
 
 ```text
-Exchange-aware Price/Session Guard
-Quote Freshness Guard
+US-equity Price/Session Baseline
+Quote Freshness + quote observation session
 Entry Zone
 Chase Limit
-Stop / Invalidation + Stop Type
+Stop / Invalidation + Stop Type（必填）
 Target 1 / Target 2
 Reward / Risk
 Setup Lifecycle
 ```
 
-Quality Score 高不代表当前价格可追。越过 Chase Limit → `blocked_do_not_chase`；未进入 Entry Zone → `wait_for_entry`；Stop 已失效 → `invalidated_reprice_required`；Target 1 已实现/越过 → `setup_expired_reprice_required`；确认型 Stop 尚未确认 → `blocked_pending_stop_confirmation`。
+Quality Score 高不代表当前价格可追。越过 Chase Limit → `blocked_do_not_chase`；未进入 Entry Zone → `wait_for_entry`；Stop 已确认失效 → `invalidated_reprice_required`；Target 1 已实现/越过 → `setup_expired_reprice_required`；确认型 Stop 尚未确认 → `blocked_pending_stop_confirmation`。
+
+对确认型 Stop，`stop_confirmation_met=true` 是持久状态：即使价格随后反弹，也不能复活旧 setup，必须重新定计划。
 
 ## 9. ETF / QDII / Portfolio Gate
 
-跨境 ETF/QDII 执行产品身份、基准、IOPV、溢价、申赎、时差和流动性纪律。组合动作只有在真实持仓、权重、成本、基准、约束和资金需求足够时才给精确比例。
+跨境 ETF/QDII 执行产品身份、基准、IOPV、溢价、申赎、时差和流动性纪律。历史溢价 `ready` 至少要求 20 个**唯一日期**的有效观察，JSON boolean 不能作为价格/IOPV 数字。组合动作只有在真实持仓、权重、成本、基准、约束和资金需求足够时才给精确比例。
 
 ## 10. Synthesis
 
@@ -127,15 +137,17 @@ Tactical Setup Readiness / 当前交易计划状态
 extensions/research_tooling/
 ```
 
-- 大股票池/Top N → `quant_factor_engine.py`；
-- 新规则/因子/阈值验证 → `backtest_factor_strategy.py`；
-- 用户明确要求记录/复盘/校准 → Prediction / Evaluation 工具。
+- 大股票池/Top N → `quant_factor_engine.py`；ticker 唯一、同一 as_of，因子需最小横截面观测；
+- 新规则/因子/阈值验证 → `backtest_factor_strategy.py`；同一 `(date,ticker)` 必须唯一；
+- 用户明确要求记录/复盘/校准 → Prediction / Evaluation 工具；公共 Ledger 使用 allowlist；
+- Evaluation 的 5D/20D/60D 相关性按 horizon 分开，样本门槛优先用 unique `research_id`；
+- Settlement 当前采用 next-session adjusted-close → target-session adjusted-close 研究指标，不能称为真实 next-open 交易 P&L；缺少终值保持 unresolved。
 
-这些外围工具不属于默认单股分析链，故障不得阻塞 CIS Core，也不得自动修改生产规则。可选 Prediction/Evaluation 的默认观察周期为短线导向的 5/20/60 交易日；仍保持 experimental，不作为 CIS Core 的必要条件。
+这些外围工具不属于默认单股分析链，故障不得阻塞 CIS Core，也不得自动修改生产规则。
 
 ## 12. 原版 TradingAgents 测试路径
 
-只有用户明确要求时，才按 `tradingagents.md` 运行本地/远程原版程序。远程每次拉取上游当前 `main`，结果仍只是 `external_decision_candidate`。
+只有用户明确要求时，才按 `tradingagents.md` 运行本地/远程原版程序。远程执行固定本次 upstream SHA；secret-backed 运行先确认该 SHA 已审查。结果仍只是 `external_decision_candidate`。
 
 必须区分：
 

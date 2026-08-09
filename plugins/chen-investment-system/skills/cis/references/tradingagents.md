@@ -1,4 +1,4 @@
-# Original TradingAgents Runtime Adapter（CIS 0.4.2）
+# Original TradingAgents Runtime Adapter（CIS 0.4.5）
 
 本文件只定义**原版 TradingAgents Python** 的运行与验证规则。CIS 日常股票研究默认使用 `tradingagents-methodology.md` 的 ChatGPT-native 稳定方法论，不要求运行本程序。
 
@@ -18,8 +18,6 @@
 
 ## 运行状态必须拆分
 
-从 0.4.2 起，不再把 `remote_ready` 当作研究质量标签。
-
 ```text
 execution_status = success | error | invalid_input | unavailable
 runtime_readiness = installed_ready | installed_limited | remote_ready | remote_limited | upstream_only | blocked
@@ -33,31 +31,61 @@ research_quality = unreviewed | accepted | rejected
 - `evidence_audit_status=not_run`：尚未通过 CIS 证据审计。
 - `research_quality=unreviewed`：结果只能作为候选，不能直接用作最终投资判断。
 
-## GitHub Actions 远程测试桥
+## GitHub Actions 远程测试桥：安全隔离
+
+0.4.5 将第三方代码执行与仓库写权限彻底拆开：
 
 ```text
 显式 request
   ↓
-.github/workflows/cis-tradingagents.yml
+Prepare Job（contents: read）
+  ├─ 校验 request
+  ├─ 读取 reviewed_sha
+  └─ 固定本次 upstream SHA
   ↓
-每次重新 clone TauricResearch/TradingAgents 当前 main
+Analyze Job（contents: read）
+  ├─ 只 checkout 固定 SHA
+  ├─ 运行 TradingAgents
+  ├─ 按 provider profile 只注入一项所需 Secret
+  └─ 产出 result Artifact
   ↓
-TradingAgentsGraph(...).propagate(...)
+Trusted Publisher Job（contents: write，无 LLM Secret，不运行第三方代码）
   ↓
 runtime/tradingagents/results/<request_id>.json
-  ↓
-CIS Evidence/Risk/Score 审计
-  ↓
-external_decision_candidate
 ```
 
-远程 runner：`scripts/run_tradingagents_remote.py`。
+因此第三方 TradingAgents 代码所在 Job **没有仓库写 token**。
 
-### 手动运行防旧请求
+### Secret-backed 上游审查门
 
-`workflow_dispatch` 现在要求显式填写：`request_id`、`ticker`、`analysis_date`、backend/model/analysts 等参数，并在 runner 内生成临时 request。手动点击 workflow 不再自动复用仓库里陈旧的 `runtime/tradingagents/request.json`。
+- `backend=ollama`：零云密钥，可对当前上游 `main` 做显式 smoke test；
+- `backend=openai_compatible`：只有当前 upstream SHA 与 `runtime/tradingagents/upstream-status.json` 的 `reviewed_sha` 完全一致时才允许执行；
+- 如果 `main` 已变化：远程 cloud run 直接阻断，先完成上游审查；
+- 不会为了“继续运行”而静默降级到旧 SHA，也不会把未审查最新代码暴露给云密钥。
 
-Push 触发仍可通过明确修改 `runtime/tradingagents/request.json` 使用。
+这与 7 天 TTL 的日常方法论策略一致：**先发现变化，再审查，再允许 secret-backed 原版运行。**
+
+## Provider / Secret 路由
+
+`run_tradingagents_remote.py` 不再从多个 Secret 中任意 fallback。
+
+```text
+backend=ollama
+provider_profile=local_ollama
+→ 不使用云 Secret
+
+backend=openai_compatible
+provider_profile=nvidia
+backend_url=https://integrate.api.nvidia.com/v1
+→ 只允许 NVIDIA_API_KEY
+
+backend=openai_compatible
+provider_profile=custom
+→ backend_url 必须为 HTTPS
+→ 只允许 OPENAI_COMPATIBLE_API_KEY
+```
+
+NVIDIA Key 不得发送到任意自定义 endpoint。Custom endpoint 也不得 fallback 使用 NVIDIA Key。Request schema 不接受 `api_key` 等未知字段，invalid request 不回显原始 payload，避免把秘密写入公开 runtime 结果。
 
 ## 原版结果最低身份校验
 
@@ -83,13 +111,9 @@ Push 触发仍可通过明确修改 `runtime/tradingagents/request.json` 使用�
 
 1. 验证当前模型 ID/端点仍可用；
 2. 不把 API key 写入 request、result、日志或仓库文件；
-3. 云后端只通过 GitHub Actions Secret 注入；
+3. 云后端只通过 GitHub Actions Secret 注入，并使用 0.4.5 provider-profile 绑定；
 4. 模型失败不得冒充 TradingAgents 研究结果；
 5. 模型强弱不能绕过 CIS Evidence、Risk、Critical Dimension、Score、Regime 和四层交易框架。
-
-`backend=openai_compatible` 支持通用兼容端点。GitHub workflow 会尝试注入 `OPENAI_COMPATIBLE_API_KEY`、`TRADINGAGENTS_API_KEY`、`NVIDIA_API_KEY`；不存在的 secret 为空，不会写入仓库。
-
-零密钥 smoke test 可使用 Ollama，但只验证可执行性，不代表正式研究质量。
 
 ## selected_analysts
 
@@ -110,7 +134,7 @@ Push 触发仍可通过明确修改 `runtime/tradingagents/request.json` 使用�
 - Quant 与 Backtest 规则；
 - CIS 八维评分；
 - Market Regime；
-- 四层交易与止盈/止损；
+- Tactical R/R 与四层交易；
 - ETF/QDII纪律；
 - 用户真实组合门；
 - 最终中文研究姿态。
@@ -119,4 +143,4 @@ Push 触发仍可通过明确修改 `runtime/tradingagents/request.json` 使用�
 
 日常方法论更新采用 **7 天 TTL** 的使用时检查：`scripts/check_tradingagents_upstream.py` + `runtime/tradingagents/upstream-status.json`。
 
-不使用定时 GitHub Actions。SHA 变化只标记 `review_required`，不会自动覆盖 `tradingagents-methodology.md`。原版显式测试则每次直接拉取当时上游当前 `main`。
+不使用定时 GitHub Actions。SHA 变化只标记 `review_required`，不会自动覆盖 `tradingagents-methodology.md`。原版显式测试仍以当时 upstream `main` 为目标，但 secret-backed 运行先经过 `reviewed_sha` 安全门；未审查最新 main 只允许零密钥 smoke test。

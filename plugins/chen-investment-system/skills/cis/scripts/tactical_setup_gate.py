@@ -139,8 +139,8 @@ def _regular_close(day: date) -> time:
     return time(16, 0)
 
 
-def _derived_session(analysis_timestamp: datetime) -> tuple[str, date, time]:
-    local = analysis_timestamp.astimezone(MARKET_TIMEZONE)
+def _derived_session(timestamp: datetime) -> tuple[str, date, time]:
+    local = timestamp.astimezone(MARKET_TIMEZONE)
     day = local.date()
     close_time = _regular_close(day)
     if not _is_trading_day(day):
@@ -202,6 +202,8 @@ def validate_price_context(payload: dict[str, Any]) -> dict[str, Any]:
     current_price = _positive_number(payload.get("current_price"), "current_price")
     age_seconds = (analysis_timestamp - quote_timestamp).total_seconds()
 
+    quote_observation_session, quote_observation_date, _ = _derived_session(quote_timestamp)
+
     if market_session == "closed":
         raw_quote_session = str(payload.get("quote_session_date") or "").strip()
         if not raw_quote_session:
@@ -215,6 +217,11 @@ def validate_price_context(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(
                 f"last_close must reference the most recent completed session {expected_last_session.isoformat()}"
             )
+        if quote_observation_date != quote_session_date:
+            raise ValueError("last_close quote_timestamp date must match quote_session_date")
+        quote_local_time = quote_timestamp.astimezone(MARKET_TIMEZONE).time().replace(tzinfo=None)
+        if quote_local_time < _regular_close(quote_session_date):
+            raise ValueError("last_close quote_timestamp must be at or after the session regular close")
         freshness_status = "last_close_reference"
         max_age_seconds = None
     else:
@@ -230,10 +237,14 @@ def validate_price_context(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(
                 f"quote is stale: age={round(age_seconds, 3)}s exceeds allowed {max_age_seconds}s"
             )
-        freshness_status = "fresh"
-        quote_session_date = quote_timestamp.astimezone(MARKET_TIMEZONE).date()
+        quote_session_date = quote_observation_date
         if quote_session_date != session_date:
             raise ValueError("active-session quote must come from the current exchange session date")
+        if quote_observation_session != market_session:
+            raise ValueError(
+                f"quote_timestamp belongs to {quote_observation_session}, not analysis market_session={market_session}"
+            )
+        freshness_status = "fresh"
 
     semantics = {
         "regular": "live_current",
@@ -249,6 +260,7 @@ def validate_price_context(payload: dict[str, Any]) -> dict[str, Any]:
         "quote_age_seconds": round(age_seconds, 3),
         "quote_max_age_seconds": max_age_seconds,
         "quote_freshness_status": freshness_status,
+        "quote_observation_session": quote_observation_session,
         "quote_session_date": quote_session_date.isoformat(),
         "exchange": exchange,
         "market_timezone": str(MARKET_TIMEZONE),
@@ -292,11 +304,20 @@ def evaluate_tactical_setup(payload: dict[str, Any]) -> dict[str, Any]:
     if direction not in DIRECTIONS:
         raise ValueError("direction must be long or short")
 
-    stop_type = str(payload.get("stop_type") or "hard_price").strip().lower()
+    raw_stop_type = str(payload.get("stop_type") or "").strip().lower()
+    if not raw_stop_type:
+        raise ValueError("stop_type is required")
+    stop_type = raw_stop_type
     if stop_type not in STOP_TYPES:
         raise ValueError("stop_type must be one of: " + ", ".join(sorted(STOP_TYPES)))
+
     if stop_type == "hard_price":
-        stop_confirmation_met = None
+        if payload.get("stop_confirmation_met") in (None, ""):
+            stop_confirmation_met = None
+        else:
+            stop_confirmation_met = _strict_bool(
+                payload.get("stop_confirmation_met"), "stop_confirmation_met"
+            )
     else:
         stop_confirmation_met = _strict_bool(
             payload.get("stop_confirmation_met"), "stop_confirmation_met"
@@ -342,9 +363,15 @@ def evaluate_tactical_setup(payload: dict[str, Any]) -> dict[str, Any]:
     stop_breached = current_price <= stop if direction == "long" else current_price >= stop
     target1_reached = current_price >= target1 if direction == "long" else current_price <= target1
 
-    if stop_breached:
+    # Confirmed invalidation is persistent. A setup cannot become active again merely
+    # because price later rebounds back above/below the numeric stop.
+    if stop_confirmation_met is True:
+        price_location = "invalidation_confirmed"
+        setup_state = "invalidated"
+        trade_gate = "invalidated_reprice_required"
+    elif stop_breached:
         price_location = "stop_breached"
-        if stop_type == "hard_price" or stop_confirmation_met is True:
+        if stop_type == "hard_price":
             setup_state = "invalidated"
             trade_gate = "invalidated_reprice_required"
         else:
@@ -404,7 +431,7 @@ def evaluate_tactical_setup(payload: dict[str, Any]) -> dict[str, Any]:
         "setup_state": setup_state,
         "price_location": price_location,
         "trade_gate": trade_gate,
-        "warning": "Tactical gate evaluates exchange/session context and payoff geometry only; it does not replace CIS evidence, risk, score, or trading analysis.",
+        "warning": "Tactical gate evaluates session/freshness, persistent invalidation state, and payoff geometry only; it does not replace CIS evidence, risk, score, or trading analysis.",
     }
     if rr2_values is not None:
         output["rr_target2_best"] = round(max(rr2_values), 4)

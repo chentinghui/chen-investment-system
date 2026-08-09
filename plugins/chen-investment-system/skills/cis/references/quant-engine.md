@@ -1,8 +1,8 @@
-# CIS Quant Factor Ranking Engine（0.4.2）
+# CIS Quant Factor Ranking Engine（0.4.5）
 
 Quant 层的职责是：**从大股票池中系统化筛选“谁值得先研究”**。它不是最终买卖引擎，也不自动产生 CIS 动作。
 
-当前 baseline 状态：`experimental_uncalibrated`。
+当前 baseline 状态：`experimental_uncalibrated_optional_extension`。
 
 ## 定位
 
@@ -42,18 +42,22 @@ CIS 最终质量门
 
 ## Point-in-time / As-of 强制规则
 
-同一次横截面排名的所有股票必须共享**完全相同的 `as_of`**。代码 `validate_as_of()` 会拒绝：
+同一次横截面排名的所有股票必须共享**完全相同的 `as_of`**，且 `as_of` 必须是 `YYYY-MM-DD`。
 
-- 缺少 `as_of` 的行；
-- 不同日期混在同一横截面中的输入。
+同一个横截面中 ticker 必须唯一且非空；重复 ticker 直接拒绝，避免同一证券被重复计入排名或权重。
 
-这用于避免把不同信息时点的股票直接混排。
+## Factor 数据有效性
+
+0.4.5 增加：
+
+- custom factor weight 必须为有限正数，JSON boolean、NaN、Inf 均拒绝；
+- direction 只能 `high|low`；transform 只能 `identity|abs`；
+- 一个 factor 至少有 `min_factor_observations` 个横截面有效值才进入排名；当前默认最小值为 2；
+- 只有1只股票有该 factor 时，不再给它虚假的50分 percentile，也不把该 factor 计入 coverage。
+
+默认 2 只是防止“单点横截面”的最低工程门，不代表统计充分。生产级股票池应使用更大的横截面覆盖。
 
 ## Max Drawdown 输入合同
-
-金融数据常把最大回撤写成负数，例如 `-0.35`；有些数据源写成正的损失幅度 `0.35`。
-
-0.4.2 默认：
 
 ```text
 max_drawdown_1y → abs(value) → 越小越好
@@ -64,6 +68,7 @@ max_drawdown_1y → abs(value) → 越小越好
 ## 缺失值与覆盖率
 
 - 缺失因子不补零；
+- 横截面观测不足的 factor 不参与任何股票的该因子排名；
 - `factor_coverage < 70%` → `insufficient`；
 - 70%–<85% → `provisional`；
 - >=85% → `ready`，但仍只是 Quant 候选，不是 CIS 决策级结论。
@@ -88,22 +93,5 @@ max_drawdown_1y → abs(value) → 越小越好
 - 按换手率计算交易成本；
 - train / validation / out-of-sample；
 - 参数稳定性与经济机制。
-
-## 输出合同
-
-```text
-engine = cis_quant_factor_ranking
-status = experimental_uncalibrated
-universe
-as_of
-factor_config
-results[]:
-  ticker
-  as_of
-  quant_score
-  factor_coverage
-  status
-  factor_scores
-```
 
 Quant 负责“先研究谁”，TradingAgents 方法论负责“为什么”，CIS 负责最终证据、风险、评分和交易纪律。

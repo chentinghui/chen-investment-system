@@ -1,11 +1,11 @@
-# CIS 0.4.4 模块路由
+# CIS 0.4.5 模块路由
 
 ## 总原则
 
 CIS 是唯一用户入口和最终质量控制层，但**不是所有工具都属于 Core**。
 
 - 单股票/上市公司研究：默认只走 CIS Core；
-- 短线/具体买点：Core 内追加 Exchange-aware Price/Session Guard + Quote Freshness + Tactical R/R Gate；
+- 短线/具体买点：Core 内追加 US-equity Price/Session + Quote Freshness + Tactical R/R Gate；
 - 大股票池筛选：按需调用 `extensions/research_tooling/quant_factor_engine.py`；
 - 专业估值/财报/模型：按需调用 Anthropic Financial Services；
 - 当前市场环境显著影响交易计划：加 Market Regime；
@@ -22,14 +22,14 @@ CIS 是唯一用户入口和最终质量控制层，但**不是所有工具都�
 | 多空观点 | Bull/Bear 独立反证 | Research Manager | 冲突保留与裁决 |
 | 价值区间/DCF/Comps | ChatGPT-native 上下文 | Anthropic DCF/Comps | valuation + Evidence |
 | 财报前后 | ChatGPT-native News/Fundamentals | Anthropic Earnings | catalyst/valuation 更新 |
-| 短线买入/做差价 | ChatGPT-native Methodology + Exchange/Session + Freshness + Tactical R/R | Regime（按需） | Tactical Context Checks + 四层交易 |
+| 短线买入/做差价 | ChatGPT-native Methodology + Session/Freshness + Tactical R/R | Regime（按需） | Tactical Context Checks + 四层交易 |
 | 买入/卖出/持有 | ChatGPT-native Methodology | Regime（按需） | Critical Dimensions + 四层交易 + Portfolio Gate |
 | 大股票池 Top N | CIS 受理 | **Quant Extension** | 候选再回到 CIS Core 深研 |
 | 量化规则是否有效 | CIS 受理 | **Backtest Extension** | 不自动改生产规则 |
 | 当前市场环境 | Market Regime | 宏观证据 | 不直接触发买卖 |
 | ETF / QDII | CIS ETF 模块 | 可验证产品数据 | ETF/QDII专属纪律 |
 | 组合再平衡 | 单标的研究 + Regime | Portfolio Gate | 真实组合数据门 |
-| 历史复盘/评分校准 | CIS 受理 | **Prediction/Evaluation Extension** | 不自动改生产权重 |
+| 历史复盘/评分校准 | CIS 受理 | **Prediction/Evaluation Extension** | horizon 分离 + 独立样本纪律 |
 | 运行原版 TradingAgents | 原版 local/remote | A/B 验证 | external_decision_candidate 仅作输入 |
 
 ## Critical Dimension / Context Check 路由
@@ -42,6 +42,14 @@ earnings  → fundamentals + catalyst_macro + risk_resilience
 ```
 
 其中 tactical 的 `price_context` 与 `catalyst_event_review` 是“检查是否完成”的布尔门；没有正面催化剂可以是合法研究结论，但未检查不能进入 `decision_grade`。
+
+质量门机器枚举统一为：
+
+```text
+audit_status = unverified | pass | fail | unresolved
+risk_status  = unverified | pass | fail | unresolved
+risk_override = none | block
+```
 
 关键维度或必需上下文检查缺失时，即使 coverage >= 85%，仍只能 `provisional`。同时，`decision_grade` 只代表 CIS Research Grade；Tactical Setup Readiness 必须另行报告，不能互相覆盖。
 
@@ -65,7 +73,7 @@ current_price
 quote_max_age_seconds（活跃时段）
 quote_session_date（closed/last_close）
 Entry Zone
-Stop + stop_type
+Stop + stop_type（stop_type 必填）
 Target 1
 ```
 
@@ -74,9 +82,11 @@ Chase Limit 和 Target 2 按任务需要。非 `hard_price` Stop 必须显式提
 路由语义：
 
 - 活跃时段 stale quote → Price Context fail；
+- active quote 的 `quote_timestamp` 不属于当前 analysis session → fail；
 - 周末/休市日不能伪装成 `regular`；
-- 旧 last close 不是最近已完成 session → fail；
-- Stop 已失效 → `invalidated_reprice_required`；
+- 旧 last close 不是最近已完成 session，或 quote timestamp 日期不匹配 → fail；
+- `stop_confirmation_met=true` → 原 setup 持久失效，不因价格反弹复活；
+- Stop 当前已失效 → `invalidated_reprice_required`；
 - Target 1 已实现/越过 → `setup_expired_reprice_required`；
 - 确认型 Stop 已穿越但未确认 → `blocked_pending_stop_confirmation`；
 - 超过 Chase Limit → `blocked_do_not_chase`；
@@ -94,9 +104,10 @@ extensions/research_tooling/
 
 路由规则：
 
-- Quant：只有股票池规模足够大、明确要求排名/筛选/Top N 时运行；横截面必须同一 `as_of`；
-- Backtest：任何准备升级成默认规则的因子/阈值/权重才运行；
-- Prediction/Evaluation：只有用户明确要求记录、复盘或校准时运行；默认观察周期为 5/20/60 交易日；
+- Quant：只有股票池规模足够大、明确要求排名/筛选/Top N 时运行；横截面必须同一 `as_of`、ticker 唯一，因子必须有最小横截面有效观测；
+- Backtest：任何准备升级成默认规则的因子/阈值/权重才运行；同一 period 的 ticker 必须唯一；
+- Prediction/Evaluation：只有用户明确要求记录、复盘或校准时运行；默认观察周期为 5/20/60 交易日；公开 Ledger 只接受 allowlist 字段；
+- Evaluation 的相关性按 horizon 分开，5D/20D/60D 不得混成一个总体相关性；样本门槛优先按 unique `research_id`；
 - 单股分析不得因为这些文件存在而自动运行；
 - Extension 故障不得阻塞 CIS Core。
 
@@ -121,7 +132,16 @@ us_nasdaq_v1 → QQQ + Nasdaq-100 breadth
 - 新 SHA → `review_required`，本次仍用稳定基线；
 - 不使用定时 GitHub Actions 监控。
 
-## TradingAgents 原版运行
+## TradingAgents 原版运行安全路由
+
+原版 Remote Runner 分成 Prepare → Analyze → Trusted Publisher：
+
+- Prepare/Analyze 只有 `contents: read`；
+- Analyze 执行固定 upstream SHA；
+- Cloud/secret-backed run 要求当前 upstream SHA 等于 `reviewed_sha`；
+- NVIDIA profile 只能使用固定 NVIDIA endpoint + `NVIDIA_API_KEY`；
+- custom compatible profile 只使用 HTTPS endpoint + `OPENAI_COMPATIBLE_API_KEY`；
+- Publisher 拥有 `contents: write`，但不持有 LLM Secret，也不执行第三方 TradingAgents 代码。
 
 只有真实 `.propagate()` 成功且结果请求身份匹配，才能说程序已执行。即便 `execution_status=success` / `runtime_readiness=remote_ready`，研究质量仍需 CIS Evidence/Risk/Score 复核。
 

@@ -1,94 +1,106 @@
-# 陈氏投资系统：CIS 0.3 架构
+# 陈氏投资系统：CIS 0.4.5 架构
 
-CIS 0.3.0 的目标不是自己维护一整套通用投资 Agent，而是把成熟上游作为研究核心，把 CIS 收缩为稳定的个人投资控制层。
+CIS 的核心职责是**股票分析与质量控制**，不是把量化、回测、预测数据库和外部运行时全部塞进默认链。
 
 ```text
 用户
   ↓
-陈氏投资系统 CIS
-  ↓
 CIS Control Layer
-  ├─ Runtime Guard / GitHub main 校验
-  ├─ 个人投资规则
-  ├─ 证据门 / 前视偏差检查
-  ├─ 八维统一评分
-  ├─ 四层交易框架
-  ├─ ETF/QDII 溢价纪律
-  ├─ 组合数据门
-  └─ 最终中文研究姿态
   ↓
-TradingAgents（默认通用研究核心）
-  ├─ Fundamentals Analyst
-  ├─ Technical Analyst
-  ├─ News Analyst
-  ├─ Sentiment Analyst
-  ├─ Bull / Bear Researchers
-  ├─ Research Manager
-  ├─ Trader
-  ├─ Risk Management Team
-  └─ Portfolio Manager → external_decision_candidate
+ChatGPT-native TradingAgents Methodology
+  ├─ Market / Technical
+  ├─ Fundamentals
+  ├─ News / Catalyst
+  ├─ Sentiment / Positioning（按需）
+  ├─ Bull / Bear
+  └─ Research Manager / Trader / Risk / Portfolio Perspective（按需）
   ↓
-Anthropic Financial Services（按需专业增强）
-  ├─ DCF
-  ├─ Comps
-  ├─ 3-Statement Model
-  ├─ Earnings Preview / Analysis
-  ├─ Model Audit / Update
-  ├─ Competitive Analysis
-  └─ Thesis / Catalyst
+Anthropic Financial Services（专业子问题按需）
   ↓
-结果回到 CIS
+Evidence Audit + Risk Review（fail-closed）
   ↓
-证据审计 → 风险门 → 冲突解释 → CIS评分
+Critical Dimensions / Context Checks
   ↓
-四层/ETF/组合门（如适用）
+CIS 八维 Research Grade
   ↓
-最终中文结论 + 证伪条件 + 复盘计划
+Market Regime（按需）
+  ↓
+Tactical Price/Session + Quote Freshness + R/R（短线按需）
+  ↓
+四层交易 / ETF-QDII / Portfolio Gate
+  ↓
+最终中文结论
 ```
 
-## 为什么这样拆分
+## Core 与 Extension
 
-- TradingAgents 由活跃团队维护通用多 Agent 投资工作流，CIS 不重复造轮子。
-- Anthropic Financial Services 处理机构化专业模型，避免让通用 Agent 粗略替代 DCF/Comps/财报建模。
-- CIS 只维护用户自己的长期规则、评分、风险纪律和最终输出，降低维护成本和版本漂移。
+CIS Core 只负责分析、证据、风险、评分和交易纪律。
 
-## CIS 自写 Agent 的定位
+以下能力物理隔离在 `extensions/research_tooling/`，仅按需使用：
 
-`plugins/chen-investment-system/agents/` 保留，但不再是默认股票研究团队：
+- Quant Factor Ranking：股票池预筛；
+- Backtest：规则/因子/阈值验证；
+- Prediction/Evaluation：可选记录、结算和校准诊断。
 
-- `fallback adapter`：TradingAgents 不可运行时兜底；
-- `conflict validator`：外部核心之间出现关键冲突时复核；
-- `CIS-specific adapter`：执行证据审计、四层交易、组合门等 CIS 特有规则。
+Extension 故障不得阻塞日常单股分析，也不得自动修改 CIS 生产权重。
 
-不允许在 TradingAgents 正常运行时无理由重复跑同职责 Agent。
+## 原版 TradingAgents
 
-## 外部决策不是最终决策
-
-TradingAgents Portfolio Manager 的输出一律标记：
+原版 `TauricResearch/TradingAgents` Python 不是日常默认研究核心，只在用户明确要求运行/测试或做 A/B/上游审查时启用。其输出统一记为：
 
 ```text
 external_decision_candidate
 ```
 
-它必须经过 CIS：
+必须再经过 CIS Evidence / Risk / Score / Tactical / ETF / Portfolio 等适用质量门。
+
+### 0.4.5 远程安全边界
 
 ```text
-证据审计
-→ 风险门
-→ 八维评分
-→ 四层交易框架（如适用）
-→ ETF/QDII 或组合门（如适用）
-→ 最终研究姿态
+Prepare / Analyze Job
+contents: read
+运行固定 upstream SHA
+按 provider 只注入一项所需 Secret
+        ↓ Artifact
+Trusted Publisher Job
+contents: write
+无 LLM Secret
+不执行第三方代码
 ```
+
+Cloud/secret-backed 原版运行只有在当前 upstream SHA 等于 `reviewed_sha` 时允许；未审查最新 main 只能零密钥 smoke test。
+
+## CIS 自写 Agent 的定位
+
+`plugins/chen-investment-system/agents/` 保存 CIS 角色契约：
+
+- 总控与最终裁决；
+- Evidence / Risk 质量门；
+- CIS 专属四层交易、ETF/QDII、组合门；
+- 外部方法不可用时的有限 fallback；
+- 关键冲突复核。
+
+它们不是要求每次分析独立重复运行的第二套完整研究团队。
+
+## 机器契约
+
+```text
+audit_status = unverified | pass | unresolved | fail
+risk_status  = unverified | pass | unresolved | fail
+risk_override = none | block
+```
+
+Tactical setup 与 Research Grade 分开；高分不自动等于当前可以买。
 
 ## 关键文件
 
 - 总入口：`plugins/chen-investment-system/skills/cis/SKILL.md`
-- TradingAgents 适配：`plugins/chen-investment-system/skills/cis/references/tradingagents.md`
-- 可执行适配器：`plugins/chen-investment-system/skills/cis/scripts/run_tradingagents.py`
-- Anthropic 适配：`plugins/chen-investment-system/skills/cis/references/anthropic-financial-services.md`
 - 系统流程：`plugins/chen-investment-system/skills/cis/references/system-workflow.md`
 - 模块路由：`plugins/chen-investment-system/skills/cis/references/module-routing.md`
-- Agent/Fallback 登记：`plugins/chen-investment-system/skills/cis/references/agent-registry.md`
+- Agent 登记：`plugins/chen-investment-system/skills/cis/references/agent-registry.md`
+- Agent 契约：`plugins/chen-investment-system/skills/cis/references/agent-contract.md`
+- TradingAgents 方法论：`plugins/chen-investment-system/skills/cis/references/tradingagents-methodology.md`
+- 原版 TradingAgents：`plugins/chen-investment-system/skills/cis/references/tradingagents.md`
 - 评分引擎：`plugins/chen-investment-system/skills/cis/references/scoring-engine.md`
-- 四层交易框架：`plugins/chen-investment-system/skills/cis/references/four-layer-trading-framework.md`
+- 四层交易：`plugins/chen-investment-system/skills/cis/references/four-layer-trading-framework.md`
+- Optional Extensions：`extensions/research_tooling/`

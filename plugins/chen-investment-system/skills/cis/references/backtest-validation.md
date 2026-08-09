@@ -1,4 +1,4 @@
-# CIS Backtest / Validation Policy（0.4.2）
+# CIS Backtest / Validation Policy（0.4.5）
 
 回测的用途是**验证规则是否在历史上具有统计价值**，不是证明未来一定有效。
 
@@ -30,6 +30,9 @@
 4. **Restatement leakage**：历史财务数据优先采用当时版本。
 5. **Transaction costs**：成本按实际组合换手率扣减，不再每期机械固定扣一次。
 6. **Data snooping**：反复调参后必须做样本外验证。
+7. **Cross-section uniqueness**：同一 period 的 `(date,ticker)` 必须唯一。重复 ticker 会让持仓权重与收益平均口径不一致，因此 0.4.5 直接拒绝。
+8. **Return validity**：`forward_return` / benchmark return 必须为有限数值，不能低于 -100%；`cost_bps` 必须是有限非负数。
+9. **Row completeness**：`date/ticker/score/forward_return` 是必需输入。任何一行缺失或损坏都直接报错，不得静默 drop；否则退市、坏数据或极端亏损样本可能被系统性排除，造成结果偏高。可选 `benchmark_return` 若留空视为缺失，但若非空却无法解析，也必须报错。
 
 ## 样本外纪律
 
@@ -39,7 +42,7 @@
 训练/设计期 → 验证期 → 样本外测试期
 ```
 
-`scripts/backtest_factor_strategy.py` 支持 `train_end` / `validation_end` 分段，并单独报告 `out_of_sample` 指标。样本足够时优先使用 walk-forward；当前脚本仍是 baseline evaluator，不声称已实现完整机构级回测框架。
+`extensions/research_tooling/backtest_factor_strategy.py` 支持 `train_end` / `validation_end` 分段，并单独报告 `out_of_sample` 指标。样本足够时优先使用 walk-forward；当前脚本仍是 baseline evaluator，不声称已实现完整机构级回测框架。
 
 ## 最小横截面回测
 
@@ -60,7 +63,7 @@ transaction_cost = one_way_turnover × configured_cost_rate
 
 首次从现金建仓按 100% one-way turnover 处理。若持仓完全不变，下期换手成本为 0。
 
-`forward_return` 必须由独立数据处理流程产生，不能由脚本在知道未来信息的基础上反向构造信号。
+`forward_return` 必须由独立数据处理流程产生，不能由脚本在知道未来信息的基础上反向构造信号。任何必需行缺少 `forward_return` 时回测必须停止，而不是把该证券从样本中删除。
 
 ## 通过标准
 

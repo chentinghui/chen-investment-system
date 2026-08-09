@@ -4,6 +4,7 @@ import argparse
 import json
 import math
 import statistics
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -12,13 +13,35 @@ MIN_HISTORY_OBSERVATIONS = 20
 
 
 def _positive(value: Any, label: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be a positive finite number")
     try:
         number = float(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"{label} must be a positive number") from exc
+        raise ValueError(f"{label} must be a positive finite number") from exc
     if not math.isfinite(number) or number <= 0:
-        raise ValueError(f"{label} must be a positive number")
+        raise ValueError(f"{label} must be a positive finite number")
     return number
+
+
+def _history_date(value: Any, label: str) -> date:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"{label}.date is required for historical premium observations")
+    try:
+        return date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(f"{label}.date must be YYYY-MM-DD") from exc
+
+
+def _as_of_date(value: Any) -> date:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("as_of is required when historical premium observations are provided")
+    try:
+        return date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError("as_of must be YYYY-MM-DD") from exc
 
 
 def _premium(price: Any, iopv: Any, label: str) -> float:
@@ -46,19 +69,29 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(current, dict):
         raise ValueError("current must be an object with price and iopv")
 
+    history_rows = payload.get("history", [])
+    if not isinstance(history_rows, list):
+        raise ValueError("history must be an array")
+    as_of_date = _as_of_date(payload.get("as_of")) if history_rows else None
+    normalized_as_of = as_of_date.isoformat() if as_of_date is not None else payload.get("as_of")
+
     current_premium = _premium(current.get("price"), current.get("iopv"), "current")
     result: dict[str, Any] = {
         "code": payload.get("code"),
-        "as_of": payload.get("as_of"),
+        "as_of": normalized_as_of,
         "current_premium_pct": _round_pct(current_premium),
         "entry_premium_pct": None,
         "premium_change_pp": None,
         "history": {
             "valid_observations": 0,
+            "unique_dates": 0,
             "required_observations": MIN_HISTORY_OBSERVATIONS,
             "status": "insufficient_history",
         },
-        "note": "Quantitative premium context only; no trade action is generated.",
+        "note": (
+            "Quantitative premium context only; no trade action is generated. "
+            "Historical readiness requires unique dated observations no later than as_of."
+        ),
     }
 
     entry = payload.get("entry")
@@ -69,20 +102,26 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         result["entry_premium_pct"] = _round_pct(entry_premium)
         result["premium_change_pp"] = round((current_premium - entry_premium) * 100, 4)
 
-    history_rows = payload.get("history", [])
-    if not isinstance(history_rows, list):
-        raise ValueError("history must be an array")
-
     historical_premiums: list[float] = []
+    seen_dates: set[str] = set()
     for index, row in enumerate(history_rows):
         if not isinstance(row, dict):
             raise ValueError(f"history[{index}] must be an object")
-        historical_premiums.append(
-            _premium(row.get("price"), row.get("iopv"), f"history[{index}]")
-        )
+        label = f"history[{index}]"
+        observation_date = _history_date(row.get("date"), label)
+        observation_iso = observation_date.isoformat()
+        if observation_iso in seen_dates:
+            raise ValueError(f"duplicate historical premium date: {observation_iso}")
+        if as_of_date is not None and observation_date > as_of_date:
+            raise ValueError(
+                f"historical premium date cannot be after as_of: {observation_iso} > {as_of_date.isoformat()}"
+            )
+        seen_dates.add(observation_iso)
+        historical_premiums.append(_premium(row.get("price"), row.get("iopv"), label))
 
+    result["history"]["valid_observations"] = len(historical_premiums)
+    result["history"]["unique_dates"] = len(seen_dates)
     if len(historical_premiums) < MIN_HISTORY_OBSERVATIONS:
-        result["history"]["valid_observations"] = len(historical_premiums)
         return result
 
     ordered = sorted(historical_premiums)
@@ -98,6 +137,7 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         regime = "within_historical_interquartile_range"
     result["history"] = {
         "valid_observations": len(ordered),
+        "unique_dates": len(seen_dates),
         "required_observations": MIN_HISTORY_OBSERVATIONS,
         "status": "ready",
         "minimum_premium_pct": _round_pct(ordered[0]),
@@ -118,7 +158,11 @@ def main() -> int:
     parser.add_argument("input", type=Path, help="UTF-8 JSON input file")
     args = parser.parse_args()
     payload = json.loads(args.input.read_text(encoding="utf-8"))
-    print(json.dumps(analyze(payload), ensure_ascii=False, indent=2))
+    try:
+        result = analyze(payload)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 

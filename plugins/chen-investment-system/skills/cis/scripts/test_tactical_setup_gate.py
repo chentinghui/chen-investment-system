@@ -31,12 +31,23 @@ class TacticalSetupGateTests(unittest.TestCase):
         self.assertEqual(result["price_semantics"], "live_current")
         self.assertEqual(result["quote_age_seconds"], 30.0)
         self.assertEqual(result["market_session"], "regular")
+        self.assertEqual(result["quote_observation_session"], "regular")
         self.assertEqual(result["quote_freshness_status"], "fresh")
 
     def test_regular_session_rejects_last_close_as_current(self) -> None:
         payload = dict(BASE)
         payload["price_type"] = "last_close"
         with self.assertRaisesRegex(ValueError, "inconsistent"):
+            validate_price_context(payload)
+
+    def test_regular_session_rejects_premarket_observation_even_if_age_is_allowed(self) -> None:
+        payload = dict(BASE)
+        payload.update({
+            "analysis_timestamp": "2026-08-10T09:35:00-04:00",
+            "quote_timestamp": "2026-08-10T09:00:00-04:00",
+            "quote_max_age_seconds": 3600,
+        })
+        with self.assertRaisesRegex(ValueError, "belongs to premarket"):
             validate_price_context(payload)
 
     def test_future_quote_is_rejected(self) -> None:
@@ -71,6 +82,12 @@ class TacticalSetupGateTests(unittest.TestCase):
         self.assertEqual(result["trade_gate"], "eligible_setup")
         self.assertEqual(result["price_location"], "in_entry_zone")
         self.assertGreaterEqual(result["rr_target1_worst"], 1.5)
+
+    def test_stop_type_is_required(self) -> None:
+        payload = dict(BASE)
+        payload.pop("stop_type")
+        with self.assertRaisesRegex(ValueError, "stop_type is required"):
+            evaluate_tactical_setup(payload)
 
     def test_beyond_chase_limit_blocks_entry(self) -> None:
         payload = dict(BASE)
@@ -119,6 +136,28 @@ class TacticalSetupGateTests(unittest.TestCase):
         result = evaluate_tactical_setup(payload)
         self.assertEqual(result["trade_gate"], "invalidated_reprice_required")
 
+    def test_confirmed_stop_remains_invalidated_after_price_recovers(self) -> None:
+        payload = dict(BASE)
+        payload.update({
+            "current_price": 105,
+            "stop_type": "close_confirmation",
+            "stop_confirmation_met": True,
+        })
+        result = evaluate_tactical_setup(payload)
+        self.assertEqual(result["setup_state"], "invalidated")
+        self.assertEqual(result["price_location"], "invalidation_confirmed")
+        self.assertEqual(result["trade_gate"], "invalidated_reprice_required")
+
+    def test_technical_invalidation_can_invalidate_without_numeric_stop_breach(self) -> None:
+        payload = dict(BASE)
+        payload.update({
+            "current_price": 105,
+            "stop_type": "technical_invalidation",
+            "stop_confirmation_met": True,
+        })
+        result = evaluate_tactical_setup(payload)
+        self.assertEqual(result["trade_gate"], "invalidated_reprice_required")
+
     def test_target1_reached_requires_repricing(self) -> None:
         payload = dict(BASE)
         payload["current_price"] = 119
@@ -151,6 +190,32 @@ class TacticalSetupGateTests(unittest.TestCase):
         })
         payload.pop("quote_max_age_seconds")
         with self.assertRaisesRegex(ValueError, "most recent completed session"):
+            evaluate_tactical_setup(payload)
+
+    def test_closed_market_rejects_quote_timestamp_date_mismatch(self) -> None:
+        payload = dict(BASE)
+        payload.update({
+            "analysis_timestamp": "2026-08-09T10:30:00-04:00",
+            "quote_timestamp": "2026-08-06T16:00:00-04:00",
+            "market_session": "closed",
+            "price_type": "last_close",
+            "quote_session_date": "2026-08-07",
+        })
+        payload.pop("quote_max_age_seconds")
+        with self.assertRaisesRegex(ValueError, "quote_timestamp date"):
+            evaluate_tactical_setup(payload)
+
+    def test_closed_market_rejects_preclose_timestamp_as_last_close(self) -> None:
+        payload = dict(BASE)
+        payload.update({
+            "analysis_timestamp": "2026-08-09T10:30:00-04:00",
+            "quote_timestamp": "2026-08-07T09:00:00-04:00",
+            "market_session": "closed",
+            "price_type": "last_close",
+            "quote_session_date": "2026-08-07",
+        })
+        payload.pop("quote_max_age_seconds")
+        with self.assertRaisesRegex(ValueError, "at or after the session regular close"):
             evaluate_tactical_setup(payload)
 
     def test_short_setup_supported(self) -> None:

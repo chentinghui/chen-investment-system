@@ -92,6 +92,19 @@ class ScoreCISTests(unittest.TestCase):
         result = calculate_score(scores, audit_status="pass", risk_status="pass", risk_override="block")
         self.assertEqual(result.grade, "provisional")
         self.assertIn("risk_override_block", result.blocked_reasons)
+        self.assertIn("风险门未通过", result.research_posture)
+
+    def test_critical_block_is_reported_as_evidence_quality_block_not_risk_block(self) -> None:
+        scores = {key: 90 for key in FULL_80}
+        result = calculate_score(
+            scores,
+            audit_status="pass",
+            risk_status="pass",
+            critical_blocked=True,
+        )
+        self.assertEqual(result.grade, "provisional")
+        self.assertIn("critical_dimension_blocked", result.blocked_reasons)
+        self.assertEqual(result.research_posture, "证据不足")
 
     def test_unverified_audit_never_decision_grade(self) -> None:
         scores = {key: 90 for key in FULL_80}

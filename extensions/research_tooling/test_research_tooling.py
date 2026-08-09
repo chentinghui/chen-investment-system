@@ -14,7 +14,7 @@ from backtest_factor_strategy import run_backtest
 from evaluate_cis_predictions import evaluate
 from prediction_ledger import DEFAULT_HORIZONS_TRADING_DAYS, materialize, record_outcome, record_prediction
 from quant_factor_engine import score_rows
-from record_cis_research import normalize_snapshot, record_snapshot
+from record_cis_research import CIS_VERSION, normalize_snapshot, record_snapshot
 from settle_due_predictions import DailyBar, settle_prediction
 
 
@@ -41,6 +41,23 @@ class QuantEngineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "same as_of"):
             score_rows(rows, {"quality": {"weight": 1.0, "direction": "high"}})
 
+    def test_duplicate_ticker_is_rejected(self) -> None:
+        rows = [
+            {"ticker": "AAA", "as_of": "2026-08-09", "quality": "10"},
+            {"ticker": "AAA", "as_of": "2026-08-09", "quality": "5"},
+        ]
+        with self.assertRaisesRegex(ValueError, "duplicate ticker"):
+            score_rows(rows, {"quality": {"weight": 1.0, "direction": "high"}})
+
+    def test_single_observation_factor_does_not_create_false_coverage(self) -> None:
+        rows = [
+            {"ticker": "AAA", "as_of": "2026-08-09", "quality": "10"},
+            {"ticker": "BBB", "as_of": "2026-08-09", "quality": ""},
+        ]
+        result = score_rows(rows, {"quality": {"weight": 1.0, "direction": "high"}})
+        self.assertTrue(all(item["status"] == "insufficient" for item in result))
+        self.assertTrue(all(item["factor_coverage"] == 0.0 for item in result))
+
 
 class BacktestTests(unittest.TestCase):
     def test_turnover_cost_drops_when_holdings_do_not_change(self) -> None:
@@ -54,6 +71,36 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(result["period_details"][0]["turnover"], 1.0)
         self.assertEqual(result["period_details"][1]["turnover"], 0.0)
 
+    def test_duplicate_period_ticker_is_rejected(self) -> None:
+        rows = [
+            {"date": "2026-01", "ticker": "A", "score": "90", "forward_return": "0.01"},
+            {"date": "2026-01", "ticker": "A", "score": "80", "forward_return": "0.02"},
+        ]
+        with self.assertRaisesRegex(ValueError, "duplicate ticker within period"):
+            run_backtest(rows, top_fraction=1.0, top_n=None, cost_bps=10, periods_per_year=12)
+
+    def test_impossible_return_below_minus_100_is_rejected(self) -> None:
+        rows = [
+            {"date": "2026-01", "ticker": "A", "score": "90", "forward_return": "-1.1"},
+        ]
+        with self.assertRaisesRegex(ValueError, "below -100%"):
+            run_backtest(rows, top_fraction=1.0, top_n=None, cost_bps=10, periods_per_year=12)
+
+    def test_missing_forward_return_is_rejected_not_silently_dropped(self) -> None:
+        rows = [
+            {"date": "2026-01", "ticker": "A", "score": "90", "forward_return": "0.01"},
+            {"date": "2026-01", "ticker": "B", "score": "80", "forward_return": ""},
+        ]
+        with self.assertRaisesRegex(ValueError, "forward_return must be a finite number"):
+            run_backtest(rows, top_fraction=1.0, top_n=None, cost_bps=10, periods_per_year=12)
+
+    def test_invalid_benchmark_return_is_rejected_not_treated_as_missing(self) -> None:
+        rows = [
+            {"date": "2026-01", "ticker": "A", "score": "90", "forward_return": "0.01", "benchmark_return": "bad"},
+        ]
+        with self.assertRaisesRegex(ValueError, "benchmark_return must be a finite number"):
+            run_backtest(rows, top_fraction=1.0, top_n=None, cost_bps=10, periods_per_year=12)
+
 
 class PredictionLedgerTests(unittest.TestCase):
     def test_default_horizons_are_tactical(self) -> None:
@@ -66,7 +113,7 @@ class PredictionLedgerTests(unittest.TestCase):
                 "research_id": "MU-20260809-001",
                 "as_of": "2026-08-09",
                 "ticker": "MU",
-                "cis_version": "0.4.3",
+                "cis_version": "0.4.5",
                 "cis_score": 82,
                 "score_status": "provisional",
                 "research_posture": "进入深入研究",
@@ -91,6 +138,21 @@ class PredictionLedgerTests(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["outcomes"][0]["realized_return"], 0.12)
 
+    def test_public_ledger_rejects_unapproved_free_form_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "predictions.jsonl"
+            with self.assertRaisesRegex(ValueError, "not allowed in the public ledger"):
+                record_prediction(ledger, {
+                    "research_id": "PRIVATE-1",
+                    "as_of": "2026-08-09",
+                    "ticker": "NVDA",
+                    "cis_version": "0.4.5",
+                    "score_status": "provisional",
+                    "research_posture": "继续观察",
+                    "benchmark": "QQQ",
+                    "notes": "personal holding information must not be accepted",
+                })
+
 
 class ResearchRecorderTests(unittest.TestCase):
     def test_snapshot_defaults_to_tactical_horizons(self) -> None:
@@ -101,6 +163,7 @@ class ResearchRecorderTests(unittest.TestCase):
             "research_posture": "继续观察",
             "benchmark": "SOXX",
         })
+        self.assertEqual(CIS_VERSION, "0.4.5")
         self.assertEqual(snapshot["ticker"], "MU")
         self.assertEqual(snapshot["horizons_trading_days"], [5, 20, 60])
 
@@ -116,6 +179,17 @@ class ResearchRecorderTests(unittest.TestCase):
             })
             self.assertEqual(event["event_type"], "prediction")
             self.assertEqual(event["horizons_trading_days"], [5, 20, 60])
+
+    def test_recorder_does_not_copy_arbitrary_payload_fields(self) -> None:
+        with self.assertRaisesRegex(ValueError, "not allowed in the public evaluation store"):
+            normalize_snapshot({
+                "ticker": "NVDA",
+                "as_of": "2026-08-09",
+                "score_status": "provisional",
+                "research_posture": "继续观察",
+                "benchmark": "QQQ",
+                "account": "private-account",
+            })
 
 
 class SettlementTests(unittest.TestCase):
@@ -148,6 +222,8 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(outcomes[0]["exit_session_date"], "2026-08-10")
         self.assertEqual(outcomes[0]["horizon_calendar_basis"], "benchmark_sessions:SPY")
         self.assertEqual(outcomes[0]["path_metric_basis"], "adjusted_close_only")
+        self.assertEqual(outcomes[0]["entry_price_basis"], "next_benchmark_session_adjusted_close")
+        self.assertEqual(outcomes[0]["return_semantics"], "next_session_close_to_close_adjusted_price_return")
 
     def test_missing_stock_price_on_next_session_is_left_unresolved(self) -> None:
         benchmark = [
@@ -174,18 +250,63 @@ class SettlementTests(unittest.TestCase):
         self.assertEqual(outcomes, [])
         self.assertTrue(any("no executable stock price" in warning for warning in warnings))
 
+    def test_non_adjusted_path_is_left_unresolved(self) -> None:
+        benchmark = [
+            DailyBar(date(2026, 8, 3), 200),
+            DailyBar(date(2026, 8, 4), 201),
+        ]
+        stock = [
+            DailyBar(date(2026, 8, 3), 100, "raw_close_fallback"),
+            DailyBar(date(2026, 8, 4), 101, "raw_close_fallback"),
+        ]
+
+        def fake_fetcher(symbol: str, start: date, end: date) -> list[DailyBar]:
+            return benchmark if symbol == "SPY" else stock
+
+        outcomes, warnings = settle_prediction(
+            {
+                "research_id": "RAW-1",
+                "as_of": "2026-08-01",
+                "ticker": "RAW",
+                "benchmark": "SPY",
+                "horizons_trading_days": [1],
+            },
+            set(),
+            today=date(2026, 8, 4),
+            fetcher=fake_fetcher,
+        )
+        self.assertEqual(outcomes, [])
+        self.assertTrue(any("mixed/non-adjusted" in warning for warning in warnings))
+
 
 class EvaluationTests(unittest.TestCase):
-    def test_high_scores_show_higher_returns_in_synthetic_sample(self) -> None:
+    def test_single_horizon_can_compute_correlations(self) -> None:
         rows = [
-            {"cis_score": "90", "realized_return": "0.20", "benchmark_return": "0.05", "horizon_days": "20", "valuation": "90"},
-            {"cis_score": "80", "realized_return": "0.10", "benchmark_return": "0.04", "horizon_days": "20", "valuation": "80"},
-            {"cis_score": "50", "realized_return": "-0.10", "benchmark_return": "0.02", "horizon_days": "60", "valuation": "40"},
+            {"research_id": "R1", "cis_score": "90", "realized_return": "0.20", "benchmark_return": "0.05", "horizon_days": "20", "valuation": "90"},
+            {"research_id": "R2", "cis_score": "80", "realized_return": "0.10", "benchmark_return": "0.04", "horizon_days": "20", "valuation": "80"},
+            {"research_id": "R3", "cis_score": "50", "realized_return": "-0.10", "benchmark_return": "0.02", "horizon_days": "20", "valuation": "40"},
         ]
         result = evaluate(rows)
         self.assertEqual(result["sample_count"], 3)
+        self.assertFalse(result["mixed_horizons"])
         self.assertGreater(result["score_return_correlation"], 0)
         self.assertGreater(result["dimension_diagnostics"]["valuation"]["excess_return_correlation"], 0)
+
+    def test_mixed_horizons_do_not_pool_correlations_or_inflate_unique_research(self) -> None:
+        rows = [
+            {"research_id": "R1", "cis_score": "90", "realized_return": "0.05", "benchmark_return": "0.01", "horizon_days": "5", "valuation": "90"},
+            {"research_id": "R1", "cis_score": "90", "realized_return": "0.12", "benchmark_return": "0.03", "horizon_days": "20", "valuation": "90"},
+            {"research_id": "R2", "cis_score": "60", "realized_return": "-0.02", "benchmark_return": "0.00", "horizon_days": "5", "valuation": "60"},
+            {"research_id": "R2", "cis_score": "60", "realized_return": "0.01", "benchmark_return": "0.02", "horizon_days": "20", "valuation": "60"},
+        ]
+        result = evaluate(rows)
+        self.assertEqual(result["outcome_count"], 4)
+        self.assertEqual(result["unique_research_count"], 2)
+        self.assertTrue(result["mixed_horizons"])
+        self.assertIsNone(result["score_return_correlation"])
+        self.assertEqual(result["dimension_diagnostics"], {})
+        self.assertIn("5", result["horizon_diagnostics"])
+        self.assertIn("20", result["horizon_diagnostics"])
 
 
 if __name__ == "__main__":

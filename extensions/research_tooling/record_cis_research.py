@@ -7,9 +7,14 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from prediction_ledger import DEFAULT_HORIZONS_TRADING_DAYS, DEFAULT_LEDGER, record_prediction
+from prediction_ledger import (
+    DEFAULT_HORIZONS_TRADING_DAYS,
+    DEFAULT_LEDGER,
+    PUBLIC_PREDICTION_ALLOWED_FIELDS,
+    record_prediction,
+)
 
-CIS_VERSION = "0.4.4"
+CIS_VERSION = "0.4.5"
 
 
 def make_research_id(ticker: str, as_of: str) -> str:
@@ -18,6 +23,12 @@ def make_research_id(ticker: str, as_of: str) -> str:
 
 
 def normalize_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
+    unknown = sorted(set(payload) - PUBLIC_PREDICTION_ALLOWED_FIELDS)
+    if unknown:
+        raise ValueError(
+            "research snapshot contains fields not allowed in the public evaluation store: "
+            + ", ".join(unknown)
+        )
     required = {"ticker", "as_of", "score_status", "research_posture", "benchmark"}
     missing = sorted(field for field in required if payload.get(field) in (None, ""))
     if missing:
@@ -25,7 +36,7 @@ def normalize_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
 
     ticker = str(payload["ticker"]).strip().upper()
     as_of = str(payload["as_of"]).strip()
-    event = dict(payload)
+    event = {key: value for key, value in payload.items() if key in PUBLIC_PREDICTION_ALLOWED_FIELDS}
     event["research_id"] = str(payload.get("research_id") or make_research_id(ticker, as_of))
     event["ticker"] = ticker
     event["as_of"] = as_of
@@ -52,7 +63,7 @@ def record_snapshot(ledger: Path, payload: dict[str, Any]) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Optional CIS research-tooling snapshot recorder"
+        description="Optional CIS public-safe research-tooling snapshot recorder"
     )
     parser.add_argument("input_json", type=Path)
     parser.add_argument("--ledger", type=Path, default=DEFAULT_LEDGER)

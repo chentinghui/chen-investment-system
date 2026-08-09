@@ -1,4 +1,4 @@
-# CIS 统一评分引擎（0–100，0.4.4）
+# CIS 统一评分引擎（0–100，0.4.5）
 
 评分是研究综合工具，不是自动交易器。任何分数都必须服从 Evidence Gate、Risk Gate、Critical Dimension / Context Checks、Market Regime（按需）、Tactical Gate（短线按需）、四层交易框架和组合数据门。
 
@@ -9,7 +9,7 @@
 - 状态：`production_heuristic_pending_calibration`
 - 不允许因为一次或少量回测结果自动调整权重。
 - `performance-loop.md` 仅作为可选 Extension 校准规范，不属于日常 Core。
-- 权重变化必须有足够样本、样本外结果、不同 Regime 稳定性和明确变更理由，并版本化修改。
+- 权重变化必须有足够独立样本、样本外结果、不同 Regime 稳定性和明确变更理由，并版本化修改。
 
 ## 维度与权重
 
@@ -27,7 +27,7 @@
 
 ## Quality Score 与 Tactical Setup 分离
 
-0.4.4 不凭感觉重写八维权重。CIS Score 继续回答“标的整体研究质量/吸引力如何”；短线是否适合现在做差价，由独立 Tactical Gate 回答。
+0.4.5 不凭感觉重写八维权重。CIS Score 继续回答“标的整体研究质量/吸引力如何”；短线是否适合现在做差价，由独立 Tactical Gate 回答。
 
 因此允许出现：
 
@@ -62,7 +62,15 @@ audit_status = unverified
 risk_status  = unverified
 ```
 
-调用者没有明确提供 `pass` 时，**禁止**进入 `decision_grade`。`audit_status`、`risk_status`、`risk_override` 使用严格枚举；`critical_blocked` 与 context checks 必须是真正 JSON boolean，字符串 `"false"` / `"true"` 会被拒绝。
+统一机器枚举：
+
+```text
+audit_status = unverified | pass | fail | unresolved
+risk_status  = unverified | pass | fail | unresolved
+risk_override = none | block
+```
+
+Evidence Auditor 的 `conditional` 与 Risk Manager 的 `caution` 不再是机器状态；需要补证时使用 `unresolved` 并在文字中说明。调用者没有明确提供 `pass` 时，**禁止**进入 `decision_grade`。`critical_blocked` 与 context checks 必须是真正 JSON boolean，字符串 `"false"` / `"true"` 会被拒绝。
 
 以下任一成立时，即使 coverage 足够，也不得升级为决策级：
 
@@ -98,14 +106,16 @@ ETF/QDII 不使用上述股票 Critical Dimension 组合替代产品门；ETF �
 
 `scripts/tactical_setup_gate.py` 不修改 CIS Score，只检查：
 
-- exchange-aware Price / Session 语义；
-- Quote Freshness；
+- US-equity session baseline Price / Session 语义；
+- Quote Freshness 与 `quote_timestamp` 所属 session；
 - Entry Zone；
 - Chase Limit；
-- Stop / Invalidation 与 Stop Type；
+- Stop / Invalidation 与**必填** Stop Type；
 - Target 1 / 2；
 - Reward / Risk；
 - Setup Lifecycle（active / invalidated / expired / pending confirmation）。
+
+对 `close_confirmation` / `technical_invalidation`，一旦 `stop_confirmation_met=true`，旧 setup 持久失效；后续价格回到数值 Stop 内侧也不能自动恢复 active，必须重新定计划。
 
 按 Entry Zone 中最差 Target 1 R/R 的 baseline：
 
@@ -151,4 +161,4 @@ Regime 不机械加减总分。它作为 `catalyst_macro`、`risk_resilience` �
 - 不允许机构买入替代基本面证据。
 - 不允许把低风险写成高收益；`risk_resilience` 只衡量抗风险能力。
 - 总控必须说明“为什么不是更高分”和“什么变化会使分数显著改变”。
-- 历史校准必须遵守 `backtest-validation.md`，禁止前视偏差和样本内过拟合。
+- 历史校准必须遵守 `backtest-validation.md`，禁止前视偏差、伪样本膨胀和样本内过拟合。

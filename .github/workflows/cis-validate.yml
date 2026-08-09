@@ -9,6 +9,7 @@ on:
       - ".github/workflows/cis-tradingagents.yml"
       - "runtime/tradingagents/upstream-status.json"
       - "README.md"
+      - "AGENT_ARCHITECTURE.md"
   workflow_dispatch:
 
 permissions:
@@ -26,7 +27,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Validate CIS architecture
+      - name: Validate CIS architecture and contracts
         run: |
           python plugins/chen-investment-system/skills/cis/scripts/validate_cis.py
 

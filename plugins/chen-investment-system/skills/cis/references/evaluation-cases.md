@@ -1,30 +1,31 @@
-# CIS 0.3 代表性测试
+# CIS 0.4.5 代表性测试
 
 | 场景 | 预期模式 | 默认核心/模块 | 关键验收 |
 |---|---|---|---|
-| “分析 MU” | standard | CIS → TradingAgents（可运行时） | 即使未显式说“陈氏投资系统”，也必须进入 CIS；先执行 Runtime Guard，再走默认股票研究核心 |
-| “MU现在能买吗” | standard | CIS → TradingAgents + CIS四层交易 | 自动进入 CIS；涉及买入位置时必须执行四层交易框架 |
-| “QQQ还能持有吗” | holding_review（有持仓上下文时） | CIS ETF/四层/组合门 | 自动进入 CIS；ETF 规则和真实组合门优先，不能只给一般市场观点 |
-| “MU全称是什么” | 不启动完整CIS | 直接事实回答 | 纯事实问题不强制运行 TradingAgents/CIS完整流程 |
-| “QQQ跟踪什么指数” | 不启动完整CIS | 直接事实回答 | 纯产品事实可直接回答；若继续问是否值得买，再进入 CIS |
-| “简单看一下贵州茅台值不值得研究” | quick | TradingAgents（可运行时） | 先检查外部核心状态；不凭旧CIS Agent直接给结论 |
-| “完整研究 AAPL，并做 DCF 和竞争分析” | deep | TradingAgents + Anthropic | 通用研究走 TradingAgents；DCF/竞争分析走 Anthropic；最终回 CIS |
-| TradingAgents 包未安装但 GitHub 上游可读 | standard | CIS fallback | 标记 `upstream_only`；不得声称已运行 `.propagate()` |
-| TradingAgents `.propagate()` 成功返回 BUY | standard | TradingAgents + CIS | BUY 仅记为 `external_decision_candidate`；必须再过证据门与CIS评分 |
-| TradingAgents 与 Anthropic DCF 方向冲突 | deep | CIS综合 | 展示数据/假设/期限冲突，不机械平均目标价或投票 |
-| TradingAgents Technical 看多，但四层框架显示趋势破坏 | holding_review | CIS四层交易 | 四层框架拥有最终交易位置约束，不能被外部Technical覆盖 |
-| TradingAgents Portfolio Manager 给仓位，但用户未提供真实组合 | holding_review | CIS组合门 | 不采用精确仓位；列出缺失成本/权重/约束/资金需求 |
-| TradingAgents 代码版本很新但新闻数据陈旧 | standard | Evidence Audit | 明确区分代码更新与数据时效，降低证据置信度 |
-| 历史日期回测/复盘 | deep | TradingAgents + Evidence Audit | 禁止使用 `analysis_date` 之后的信息；检查 look-ahead leakage |
-| “这家公司业绩发布后论点变了吗” | standard | TradingAgents + Anthropic Earnings | Anthropic `earnings-analysis` 为专业核心，TradingAgents提供市场上下文 |
-| “比较两只 ETF 的持仓重合度”但未提供持仓资料 | standard | CIS ETF | ETF 模块 blocked/limited；不强制调用 TradingAgents |
+| “分析 MU” | standard | CIS Core / ChatGPT-native TradingAgents Methodology | 即使未显式说“陈氏投资系统”，也进入 CIS；先 Runtime Guard，再走稳定方法论 |
+| “MU现在能买吗” | tactical/standard | CIS Core + Price/Session + Tactical R/R + 四层交易 | 必须区分 Research Grade 与 Tactical Setup Readiness |
+| 周末把 `market_session=regular` | tactical | Price/Session Guard | 直接拒绝；调用者不能覆盖代码推导 session |
+| 09:35 regular 分析，却使用09:00 premarket quote | tactical | Quote Freshness | 即使 quote age 在允许范围内，也因 quote observation session 不一致而拒绝 |
+| `stop_type` 缺失 | tactical | Tactical Gate | fail-closed；不得静默默认 hard stop |
+| close-confirmation 昨日已确认失效，今日价格反弹 | tactical | Setup Lifecycle | 仍为 `invalidated_reprice_required`，旧 setup 不得复活 |
+| technical invalidation 已确认，但当前价未碰 numeric stop | tactical | Setup Lifecycle | 仍为 `invalidated_reprice_required` |
+| “QQQ还能持有吗” | holding_review（有持仓上下文时） | CIS ETF/四层/组合门 | ETF 规则和真实组合门优先，不能只给一般市场观点 |
+| “MU全称是什么” | 不启动完整CIS | 直接事实回答 | 纯事实问题不强制运行完整 CIS |
+| “完整研究 AAPL，并做 DCF 和竞争分析” | deep | CIS Core + Anthropic（按需） | DCF/竞争分析走专业方法，最终回 CIS 质量门 |
+| 原版 TradingAgents `.propagate()` 成功返回 BUY | explicit test | Original TradingAgents + CIS | BUY 仅记为 `external_decision_candidate`；不得直接变成最终动作 |
+| TradingAgents current main 与 reviewed_sha 不同，且请求云 Secret | explicit test | Remote Runner security gate | 阻断 secret-backed run，先审查上游；零密钥 Ollama smoke test 仍可用于可执行性检查 |
+| 自定义 compatible endpoint 试图使用 NVIDIA profile | explicit test | Provider security | 拒绝；NVIDIA Key 只允许固定 NVIDIA endpoint |
+| TradingAgents 执行 Job | explicit test | GitHub Actions | 只有 `contents: read`；写回由独立 trusted publisher 完成 |
+| Evidence Auditor 输出“需要条件补证” | standard/deep | Evidence Audit | 机器状态使用 `unresolved`，不使用 `conditional` |
+| Risk Manager 认为谨慎但未 block | standard/deep | Risk Review | 使用 `risk_status=unresolved` 或 `pass` + 风险说明；机器 `risk_override` 只有 `none|block` |
 | 159509 两位数溢价、用户刚建仓 | holding_review | CIS ETF/QDII | 不因绝对溢价机械退出；比较建仓溢价、历史区间和申赎状态 |
-| 高溢价跨境 ETF 发布风险提示公告 | holding_review | CIS ETF/QDII | 公告只是复核触发器，不是自动卖出信号 |
-| “英伟达186美元买入20股，现在能卖吗” | holding_review | TradingAgents + CIS四层/组合门 | 同时给继续持有区、两档止盈、回调观察、防守线、基本面失效条件 |
-| 英伟达/QQQ已有盈利但趋势和估值仍健康 | holding_review | CIS四层交易 | 不因盈利机械卖出；明确止盈是可选方案 |
-| 盘中成交量尚未收盘 | standard/holding_review | Evidence Audit | 不把盘中量直接与全天均量比较 |
-| Anthropic DCF Skill 无法读取 | deep | TradingAgents + CIS fallback | 不伪造专业DCF；valuation维度 limited 或 blocked |
-| GitHub可访问且用户说“陈氏投资系统” | 任意 | Runtime Guard | 先核验 `chentinghui/chen-investment-system` 当前 `main` |
-| “股票研究助手分析腾讯” | standard | CIS | 旧入口只转交 CIS；CIS 再决定 TradingAgents/Anthropic 路由 |
-| TradingAgents运行失败 | standard/deep | CIS fallback adapters | 不终止整个CIS；按最小fallback团队继续并降低置信度 |
-| Buffett 与 TradingAgents 长期质量判断冲突 | deep | CIS综合 | Buffett仅作为定性外部视角，不直接推翻数据化研究；解释差异 |
+| ETF 历史20条其实来自同一天重复复制 | ETF/QDII | ETF Premium Tool | 拒绝重复日期；不能把重复数据包装成20个有效观察 |
+| ETF price=true | ETF/QDII | ETF Premium Tool | JSON boolean 不能当成1.0价格 |
+| Quant 同一 as_of 出现重复 ticker | screening | Quant Extension | 拒绝重复 ticker |
+| Quant 某因子只有1只股票有数据 | screening | Quant Extension | 该因子不形成 percentile，也不计入 coverage |
+| Backtest 同一 period 重复 ticker | backtest | Backtest Extension | 拒绝，避免权重与收益平均口径不一致 |
+| 同一次研究生成5D/20D/60D outcomes | evaluation | Evaluation Extension | unique research sample 只算1；相关性按 horizon 分开，禁止 pooled correlation |
+| 公共 Prediction 输入 notes/account/shares 等字段 | evaluation | Prediction Ledger | allowlist 直接拒绝，不依赖 blacklist |
+| Settlement 缺少 adjusted close | evaluation | Settlement | unresolved；不得 fallback raw close 后仍叫 adjusted_close |
+| Settlement 输出 Entry | evaluation | Settlement | 明确是 next-session adjusted-close 研究指标，不得称为 next-open 实际成交收益 |
+| GitHub可访问且用户说“陈氏投资系统” | 任意 | Runtime Guard | 先核验当前 `main`，不得凭聊天记忆恢复旧流程 |

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,9 +18,28 @@ REQUIRED_PREDICTION_FIELDS = {
     "research_posture",
     "benchmark",
 }
-PUBLIC_LEDGER_FORBIDDEN_FIELDS = {
-    "account", "account_id", "broker", "cost_basis", "holding_cost",
-    "portfolio_value", "position_size", "shares", "user_name",
+PUBLIC_PREDICTION_ALLOWED_FIELDS = {
+    "research_id", "as_of", "ticker", "company", "cis_version", "methodology_version",
+    "score_status", "research_posture", "benchmark", "sector_benchmark",
+    "benchmark_mapping_version", "cis_score", "coverage_pct", "dimension_scores",
+    "horizons_trading_days", "horizon_days", "schema_version", "recorded_at",
+    "snapshot_type", "formal_research", "regime", "sector", "industry", "quant_score",
+    "analysis_price", "analysis_price_source", "analysis_timestamp", "information_cutoff_at",
+    "methodology_mode", "decision_context", "research_cohort", "setup_type",
+    "technical_state", "relative_strength", "catalyst_status", "sentiment_status",
+    "entry_zone_low", "entry_zone_high", "chase_limit", "stop_price", "stop_type",
+    "target_1", "target_2", "planned_rr_target1", "planned_rr_target2",
+    "thesis_falsifiers",
+}
+PUBLIC_OUTCOME_ALLOWED_FIELDS = {
+    "research_id", "horizon_trading_days", "horizon_days", "evaluation_as_of",
+    "entry_session_date", "exit_session_date", "entry_price", "exit_price",
+    "entry_price_basis", "exit_price_basis", "return_semantics",
+    "realized_return", "benchmark_return", "benchmark_entry_price", "benchmark_exit_price",
+    "sector_benchmark_return", "max_favorable_excursion", "max_adverse_excursion",
+    "max_drawdown_during_horizon", "path_metric_basis", "horizon_calendar_basis",
+    "falsifier_triggered", "falsifier_status", "market_data_source",
+    "market_data_retrieved_at", "terminal_event_handling", "schema_version", "recorded_at",
 }
 
 
@@ -42,6 +62,30 @@ def _strict_optional_bool(value: Any, label: str) -> bool | None:
     raise ValueError(f"{label} must be true, false, or null")
 
 
+def _finite_float(value: Any, label: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be a finite number")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a finite number") from exc
+    if not math.isfinite(number):
+        raise ValueError(f"{label} must be a finite number")
+    return number
+
+
+def _strict_positive_int(value: Any, label: str) -> int:
+    if type(value) is not int or value <= 0:
+        raise ValueError(f"{label} must be a positive integer")
+    return value
+
+
+def _reject_unknown(payload: dict[str, Any], allowed: set[str], label: str) -> None:
+    unknown = sorted(set(payload) - allowed)
+    if unknown:
+        raise ValueError(f"{label} contains fields not allowed in the public ledger: " + ", ".join(unknown))
+
+
 def _normalize_horizons(payload: dict[str, Any]) -> list[int]:
     raw = payload.get("horizons_trading_days")
     if raw in (None, ""):
@@ -49,15 +93,10 @@ def _normalize_horizons(payload: dict[str, Any]) -> list[int]:
         raw = [legacy] if legacy not in (None, "") else list(DEFAULT_HORIZONS_TRADING_DAYS)
     if not isinstance(raw, (list, tuple)):
         raise ValueError("horizons_trading_days must be an array")
-    horizons: list[int] = []
-    for value in raw:
-        try:
-            horizon = int(value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("horizons_trading_days must contain positive integers") from exc
-        if horizon <= 0:
-            raise ValueError("horizons_trading_days must contain positive integers")
-        horizons.append(horizon)
+    horizons = [
+        _strict_positive_int(value, "horizons_trading_days values")
+        for value in raw
+    ]
     normalized = sorted(set(horizons))
     if not normalized:
         raise ValueError("at least one evaluation horizon is required")
@@ -109,23 +148,37 @@ def outcome_keys(events: list[dict[str, Any]]) -> set[tuple[str, int]]:
             if len(horizons) == 1:
                 horizon = horizons[0]
         if horizon not in (None, ""):
+            # Compatibility for already-stored historical ledger events. New writes
+            # are strict JSON integers and are validated before reaching this path.
             keys.add((research_id, int(horizon)))
     return keys
 
 
 def validate_prediction(payload: dict[str, Any]) -> dict[str, Any]:
+    _reject_unknown(payload, PUBLIC_PREDICTION_ALLOWED_FIELDS, "prediction")
     missing = sorted(field for field in REQUIRED_PREDICTION_FIELDS if payload.get(field) in (None, ""))
     if missing:
         raise ValueError("prediction missing required fields: " + ", ".join(missing))
-    forbidden = sorted(field for field in PUBLIC_LEDGER_FORBIDDEN_FIELDS if field in payload)
-    if forbidden:
-        raise ValueError("public prediction ledger must not contain private portfolio fields: " + ", ".join(forbidden))
     score = payload.get("cis_score")
-    if score is not None and not 0 <= float(score) <= 100:
-        raise ValueError("cis_score must be between 0 and 100")
+    if score is not None:
+        score_value = _finite_float(score, "cis_score")
+        if not 0 <= score_value <= 100:
+            raise ValueError("cis_score must be between 0 and 100")
     dimensions = payload.get("dimension_scores", {})
     if dimensions is not None and not isinstance(dimensions, dict):
         raise ValueError("dimension_scores must be an object")
+    if isinstance(dimensions, dict):
+        for name, value in dimensions.items():
+            if value is None:
+                continue
+            number = _finite_float(value, f"dimension_scores.{name}")
+            if not 0 <= number <= 100:
+                raise ValueError(f"dimension_scores.{name} must be between 0 and 100")
+    falsifiers = payload.get("thesis_falsifiers")
+    if falsifiers is not None:
+        if not isinstance(falsifiers, list) or any(not isinstance(item, str) for item in falsifiers):
+            raise ValueError("thesis_falsifiers must be an array of research-only strings")
+
     event = dict(payload)
     event["as_of"] = _iso_date(payload["as_of"], "as_of")
     event["ticker"] = str(payload["ticker"]).strip().upper()
@@ -134,13 +187,14 @@ def validate_prediction(payload: dict[str, Any]) -> dict[str, Any]:
         event["sector_benchmark"] = str(payload["sector_benchmark"]).strip().upper()
     event["horizons_trading_days"] = _normalize_horizons(payload)
     event.pop("horizon_days", None)
-    event["schema_version"] = int(payload.get("schema_version", 2))
+    event["schema_version"] = int(payload.get("schema_version", 3))
     event["event_type"] = "prediction"
     event["recorded_at"] = payload.get("recorded_at") or now_iso()
     return event
 
 
 def validate_outcome(payload: dict[str, Any], prediction: dict[str, Any] | None = None) -> dict[str, Any]:
+    _reject_unknown(payload, PUBLIC_OUTCOME_ALLOWED_FIELDS, "outcome")
     required = {"research_id", "evaluation_as_of", "realized_return", "benchmark_return", "max_drawdown_during_horizon"}
     missing = sorted(field for field in required if payload.get(field) in (None, ""))
     if missing:
@@ -152,22 +206,39 @@ def validate_outcome(payload: dict[str, Any], prediction: dict[str, Any] | None 
             horizon = horizons[0]
     if horizon in (None, ""):
         raise ValueError("outcome missing required field: horizon_trading_days")
-    horizon = int(horizon)
-    if horizon <= 0:
-        raise ValueError("horizon_trading_days must be positive")
+    horizon = _strict_positive_int(horizon, "horizon_trading_days")
     if prediction and horizon not in _normalize_horizons(prediction):
         raise ValueError(f"horizon {horizon} was not registered in prediction")
+
     event = dict(payload)
     event["evaluation_as_of"] = _iso_date(payload["evaluation_as_of"], "evaluation_as_of")
     event["horizon_trading_days"] = horizon
     event.pop("horizon_days", None)
-    event["realized_return"] = float(payload["realized_return"])
-    event["benchmark_return"] = float(payload["benchmark_return"])
-    event["max_drawdown_during_horizon"] = float(payload["max_drawdown_during_horizon"])
+    event["realized_return"] = _finite_float(payload["realized_return"], "realized_return")
+    event["benchmark_return"] = _finite_float(payload["benchmark_return"], "benchmark_return")
+    event["max_drawdown_during_horizon"] = _finite_float(
+        payload["max_drawdown_during_horizon"], "max_drawdown_during_horizon"
+    )
+    if event["realized_return"] < -1 or event["benchmark_return"] < -1:
+        raise ValueError("returns cannot be below -100%")
+    if not -1 <= event["max_drawdown_during_horizon"] <= 0:
+        raise ValueError("max_drawdown_during_horizon must be between -1 and 0")
+
     for field in ("sector_benchmark_return", "max_favorable_excursion", "max_adverse_excursion", "entry_price", "exit_price", "benchmark_entry_price", "benchmark_exit_price"):
         if payload.get(field) not in (None, ""):
-            event[field] = float(payload[field])
+            event[field] = _finite_float(payload[field], field)
+    for field in ("entry_price", "exit_price", "benchmark_entry_price", "benchmark_exit_price"):
+        if field in event and event[field] <= 0:
+            raise ValueError(f"{field} must be positive")
+    if "max_favorable_excursion" in event and event["max_favorable_excursion"] < 0:
+        raise ValueError("max_favorable_excursion cannot be negative")
+    if "max_adverse_excursion" in event and not -1 <= event["max_adverse_excursion"] <= 0:
+        raise ValueError("max_adverse_excursion must be between -1 and 0")
+    if "sector_benchmark_return" in event and event["sector_benchmark_return"] < -1:
+        raise ValueError("sector_benchmark_return cannot be below -100%")
+
     event["falsifier_triggered"] = _strict_optional_bool(payload.get("falsifier_triggered"), "falsifier_triggered")
+    event["schema_version"] = int(payload.get("schema_version", 3))
     event["event_type"] = "outcome"
     event["recorded_at"] = payload.get("recorded_at") or now_iso()
     return event
@@ -217,7 +288,7 @@ def materialize(ledger: Path) -> list[dict[str, Any]]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Optional append-only ledger for CIS research evaluation")
+    parser = argparse.ArgumentParser(description="Optional append-only public-safe ledger for CIS research evaluation")
     parser.add_argument("--ledger", type=Path, default=DEFAULT_LEDGER)
     sub = parser.add_subparsers(dest="command", required=True)
     record = sub.add_parser("record")

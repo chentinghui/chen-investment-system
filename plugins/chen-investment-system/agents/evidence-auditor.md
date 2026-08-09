@@ -16,10 +16,13 @@ description: 独立检查来源质量、时效、数字口径、因果跳跃、�
 - 不给目标价或最终投资姿态。
 
 ## 交付物
-- `audit_status: pass | conditional | unresolved`。
+- `audit_status: pass | unresolved | fail`。
+- `pass`：关键结论已有可追溯、时效和口径合格的证据；`unresolved`：仍需补证；`fail`：存在足以否决当前证据链的错误/冲突。
 - 缺失/冲突/陈旧证据清单。
 - 被否决的推理跳跃及原因。
 - 总评分允许的最大覆盖等级：`decision_grade | provisional | insufficient`。
+
+`conditional` 不再作为机器接口状态；需要条件放行时使用 `audit_status: unresolved` 并在缺口中写明条件，避免与 `score_cis.py` 枚举漂移。
 
 ## 成功指标
 任何被审计为 `pass` 的核心结论都有可追溯证据链。
