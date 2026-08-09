@@ -3,23 +3,49 @@
 
 Execution success is deliberately separated from evidence/research quality.
 A completed graph is not automatically an accepted CIS research result.
+
+Security boundary:
+- request payloads never contain API keys;
+- each provider profile maps to exactly one credential environment variable;
+- arbitrary OpenAI-compatible endpoints may use only OPENAI_COMPATIBLE_API_KEY;
+- NVIDIA credentials are accepted only for NVIDIA's fixed endpoint;
+- invalid requests are not echoed back into repository artifacts.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import traceback
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 DEFAULT_BACKEND = "ollama"
 DEFAULT_OLLAMA_MODEL = "qwen3:4b-instruct"
 DEFAULT_ANALYSTS = ["market", "social", "news", "fundamentals"]
 ALLOWED_ANALYSTS = set(DEFAULT_ANALYSTS)
 OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1"
+NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+ALLOWED_REQUEST_FIELDS = {
+    "request_id",
+    "ticker",
+    "analysis_date",
+    "backend",
+    "provider_profile",
+    "backend_url",
+    "deep_model",
+    "quick_model",
+    "selected_analysts",
+    "max_debate_rounds",
+    "max_risk_rounds",
+    "output_language",
+}
+REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+TICKER_RE = re.compile(r"^[A-Z0-9.^_-]{1,24}$")
 
 
 def jsonable(value: Any) -> Any:
@@ -37,10 +63,39 @@ def jsonable(value: Any) -> Any:
     return str(value)
 
 
+def _strict_nonnegative_int(value: Any, label: str, default: int) -> int:
+    if value in (None, ""):
+        return default
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be a non-negative integer")
+    try:
+        number = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a non-negative integer") from exc
+    if number < 0:
+        raise ValueError(f"{label} must be a non-negative integer")
+    return number
+
+
+def _validated_https_url(value: str, label: str) -> str:
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError(f"{label} must be an absolute https URL")
+    if parsed.username or parsed.password:
+        raise ValueError(f"{label} must not contain embedded credentials")
+    return value.rstrip("/")
+
+
 def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ValueError("request must be a JSON object")
+    unknown = sorted(set(payload) - ALLOWED_REQUEST_FIELDS)
+    if unknown:
+        raise ValueError("unknown or forbidden request fields: " + ", ".join(unknown))
+
     ticker = str(payload.get("ticker", "")).strip().upper()
-    if not ticker:
-        raise ValueError("ticker is required")
+    if not ticker or not TICKER_RE.fullmatch(ticker):
+        raise ValueError("ticker is required and must contain only standard ticker characters")
 
     analysis_date = str(payload.get("analysis_date", "")).strip() or date.today().isoformat()
     date.fromisoformat(analysis_date)
@@ -49,21 +104,58 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
     if backend not in {"ollama", "openai_compatible"}:
         raise ValueError("backend must be 'ollama' or 'openai_compatible'")
 
-    if backend == "ollama":
-        deep_model = str(payload.get("deep_model") or DEFAULT_OLLAMA_MODEL)
-        quick_model = str(payload.get("quick_model") or deep_model)
-        backend_url = str(payload.get("backend_url") or OLLAMA_BASE_URL)
-    else:
-        deep_model = str(payload.get("deep_model") or "")
-        quick_model = str(payload.get("quick_model") or deep_model)
-        backend_url = str(payload.get("backend_url") or os.getenv("TRADINGAGENTS_LLM_BACKEND_URL") or "")
-        if not deep_model or not backend_url:
-            raise ValueError("openai_compatible backend requires deep_model and backend_url")
+    requested_profile = str(payload.get("provider_profile") or "").strip().lower()
+    raw_backend_url = str(payload.get("backend_url") or "").strip()
 
-    debate_rounds = int(payload.get("max_debate_rounds", 1))
-    risk_rounds = int(payload.get("max_risk_rounds", 1))
-    if debate_rounds < 0 or risk_rounds < 0:
-        raise ValueError("debate rounds must be >= 0")
+    if backend == "ollama":
+        if requested_profile not in {"", "local_ollama"}:
+            raise ValueError("ollama backend requires provider_profile=local_ollama")
+        provider_profile = "local_ollama"
+        deep_model = str(payload.get("deep_model") or DEFAULT_OLLAMA_MODEL).strip()
+        quick_model = str(payload.get("quick_model") or deep_model).strip()
+        backend_url = raw_backend_url.rstrip("/") if raw_backend_url else OLLAMA_BASE_URL
+        if backend_url != OLLAMA_BASE_URL:
+            raise ValueError(f"ollama backend_url must equal {OLLAMA_BASE_URL}")
+        credential_env = None
+    else:
+        deep_model = str(payload.get("deep_model") or "").strip()
+        quick_model = str(payload.get("quick_model") or deep_model).strip()
+        if not deep_model:
+            raise ValueError("openai_compatible backend requires deep_model")
+
+        if not requested_profile:
+            # Backward-compatible inference is deliberately narrow: only the exact
+            # NVIDIA endpoint may infer the NVIDIA profile. Any other endpoint is
+            # treated as a custom endpoint and can use only the generic credential.
+            requested_profile = (
+                "nvidia" if raw_backend_url.rstrip("/") == NVIDIA_BASE_URL else "custom"
+            )
+        if requested_profile not in {"nvidia", "custom"}:
+            raise ValueError("openai_compatible provider_profile must be nvidia or custom")
+        provider_profile = requested_profile
+
+        if provider_profile == "nvidia":
+            backend_url = raw_backend_url.rstrip("/") if raw_backend_url else NVIDIA_BASE_URL
+            if backend_url != NVIDIA_BASE_URL:
+                raise ValueError(f"nvidia provider_profile requires backend_url={NVIDIA_BASE_URL}")
+            credential_env = "NVIDIA_API_KEY"
+        else:
+            if not raw_backend_url:
+                raise ValueError("custom provider_profile requires backend_url")
+            backend_url = _validated_https_url(raw_backend_url, "backend_url")
+            if backend_url == NVIDIA_BASE_URL:
+                raise ValueError("NVIDIA endpoint must use provider_profile=nvidia")
+            credential_env = "OPENAI_COMPATIBLE_API_KEY"
+
+    if not deep_model or not quick_model:
+        raise ValueError("deep_model and quick_model must be non-empty")
+
+    debate_rounds = _strict_nonnegative_int(
+        payload.get("max_debate_rounds"), "max_debate_rounds", 1
+    )
+    risk_rounds = _strict_nonnegative_int(
+        payload.get("max_risk_rounds"), "max_risk_rounds", 1
+    )
 
     raw_analysts = payload.get("selected_analysts", DEFAULT_ANALYSTS)
     if not isinstance(raw_analysts, list) or not raw_analysts:
@@ -79,13 +171,17 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
     request_id = str(payload.get("request_id") or "").strip()
     if not request_id:
         request_id = f"{ticker}-{analysis_date}"
+    if not REQUEST_ID_RE.fullmatch(request_id):
+        raise ValueError("request_id must match [A-Za-z0-9._-] and be at most 128 characters")
 
     return {
         "request_id": request_id,
         "ticker": ticker,
         "analysis_date": analysis_date,
         "backend": backend,
+        "provider_profile": provider_profile,
         "backend_url": backend_url,
+        "credential_env": credential_env,
         "deep_model": deep_model,
         "quick_model": quick_model,
         "selected_analysts": selected_analysts,
@@ -128,6 +224,7 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"- selected analysts: `{', '.join(result.get('selected_analysts') or [])}`",
         f"- TradingAgents upstream SHA: `{result.get('tradingagents_upstream_sha')}`",
         f"- LLM backend: `{result.get('backend')}`",
+        f"- provider profile: `{result.get('provider_profile')}`",
         f"- deep model: `{result.get('deep_model')}`",
         f"- quick model: `{result.get('quick_model')}`",
         "",
@@ -184,15 +281,14 @@ def configure_llm(req: dict[str, Any], config: dict[str, Any]) -> None:
         config["llm_provider"] = "ollama"
         config["backend_url"] = req["backend_url"]
     else:
-        api_key = (
-            os.getenv("OPENAI_COMPATIBLE_API_KEY")
-            or os.getenv("TRADINGAGENTS_API_KEY")
-            or os.getenv("NVIDIA_API_KEY")
-        )
+        credential_env = req.get("credential_env")
+        if credential_env not in {"NVIDIA_API_KEY", "OPENAI_COMPATIBLE_API_KEY"}:
+            raise RuntimeError("invalid credential routing for openai_compatible backend")
+        api_key = os.getenv(str(credential_env))
         if not api_key:
-            raise RuntimeError(
-                "OPENAI_COMPATIBLE_API_KEY, TRADINGAGENTS_API_KEY, or NVIDIA_API_KEY is required for openai_compatible backend"
-            )
+            raise RuntimeError(f"{credential_env} is required for provider_profile={req['provider_profile']}")
+        # TradingAgents' compatible backend reads this generic variable. Only the
+        # single provider-specific credential selected above is copied into it.
         os.environ["OPENAI_COMPATIBLE_API_KEY"] = api_key
         config["llm_provider"] = "openai_compatible"
         config["backend_url"] = req["backend_url"]
@@ -212,9 +308,8 @@ def main() -> int:
         return 2
 
     request_path, result_path, markdown_path = map(Path, sys.argv[1:4])
-    raw = json.loads(request_path.read_text(encoding="utf-8"))
-
     try:
+        raw = json.loads(request_path.read_text(encoding="utf-8"))
         req = validate_request(raw)
     except Exception as exc:
         write_result(result_path, markdown_path, {
@@ -224,12 +319,11 @@ def main() -> int:
             "evidence_audit_status": "not_run",
             "research_quality": "rejected",
             "error": str(exc),
-            "raw_request": raw,
         })
         return 2
 
     base_result = {
-        **req,
+        **{key: value for key, value in req.items() if key != "credential_env"},
         "engine": "TradingAgents",
         "runner": "github_actions",
         "tradingagents_upstream_sha": os.getenv("TRADINGAGENTS_UPSTREAM_SHA", "unknown"),
