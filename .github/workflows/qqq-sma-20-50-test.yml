@@ -1,0 +1,254 @@
+name: QQQ SMA20-50 One-shot Test
+
+on:
+  push:
+    branches:
+      - agent/qqq-sma-20-50-test
+    paths:
+      - ".github/workflows/qqq-sma-20-50-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run causal QQQ SMA20/50 backtest
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, math, statistics, time, urllib.parse, urllib.request
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          SYMBOL = "QQQ"
+          FAST = 20
+          SLOW = 50
+          START = "2020-01-02"
+          END = "2026-08-07"
+          FETCH_START = "2019-09-01"
+
+          def unix(date_text):
+              return int(datetime.strptime(date_text, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+
+          params = urllib.parse.urlencode({
+              "period1": unix(FETCH_START),
+              "period2": unix("2026-08-08"),
+              "interval": "1d",
+              "events": "history",
+              "includeAdjustedClose": "true",
+          })
+          errors = []
+          payload = None
+          source_url = None
+          for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
+              url = f"https://{host}/v8/finance/chart/{SYMBOL}?{params}"
+              for attempt in range(3):
+                  try:
+                      req = urllib.request.Request(url, headers={
+                          "User-Agent": "Mozilla/5.0 CIS-QQQ-Backtest/1.0",
+                          "Accept": "application/json",
+                      })
+                      with urllib.request.urlopen(req, timeout=20) as r:
+                          payload = json.load(r)
+                      source_url = url
+                      break
+                  except Exception as exc:
+                      errors.append(f"{host} attempt {attempt+1}: {type(exc).__name__}: {exc}")
+                      time.sleep(2 * (attempt + 1))
+              if payload is not None:
+                  break
+          if payload is None:
+              raise SystemExit("Yahoo Chart API failed: " + " | ".join(errors))
+
+          result = payload["chart"]["result"][0]
+          timestamps = result["timestamp"]
+          quote = result["indicators"]["quote"][0]
+          adj = result["indicators"].get("adjclose", [{}])[0].get("adjclose", quote["close"])
+
+          rows = []
+          for ts, opn, close, adjclose in zip(timestamps, quote["open"], quote["close"], adj):
+              if opn is None or close is None or adjclose is None or close == 0:
+                  continue
+              dt = datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
+              factor = adjclose / close
+              rows.append({
+                  "date": dt,
+                  "open": float(opn),
+                  "close": float(close),
+                  "adj_open": float(opn) * factor,
+                  "adj_close": float(adjclose),
+              })
+
+          rows.sort(key=lambda x: x["date"])
+          closes = [r["adj_close"] for r in rows]
+          for i, row in enumerate(rows):
+              if i + 1 >= FAST:
+                  row["sma20"] = sum(closes[i-FAST+1:i+1]) / FAST
+              else:
+                  row["sma20"] = None
+              if i + 1 >= SLOW:
+                  row["sma50"] = sum(closes[i-SLOW+1:i+1]) / SLOW
+              else:
+                  row["sma50"] = None
+              row["regime"] = bool(row["sma20"] is not None and row["sma50"] is not None and row["sma20"] > row["sma50"])
+
+          start_idx = next(i for i,r in enumerate(rows) if r["date"] >= START)
+          end_idx = max(i for i,r in enumerate(rows) if r["date"] <= END)
+          if start_idx == 0:
+              raise SystemExit("insufficient warmup")
+
+          cash = 1.0
+          shares = 0.0
+          holding = False
+          entry = None
+          closed_trades = []
+          signals = []
+          equity_curve = []
+
+          for i in range(start_idx, end_idx + 1):
+              r = rows[i]
+              desired = rows[i-1]["regime"]  # signal known at prior close, execution at today's open
+              if desired != holding:
+                  equity_open = cash + shares * r["adj_open"]
+                  if desired:
+                      shares = equity_open / r["adj_open"]
+                      cash = 0.0
+                      holding = True
+                      entry = {"date": r["date"], "price": r["adj_open"], "signal_date": rows[i-1]["date"]}
+                      signals.append({"type": "BUY", **entry})
+                  else:
+                      cash = equity_open
+                      shares = 0.0
+                      holding = False
+                      exit_rec = {"date": r["date"], "price": r["adj_open"], "signal_date": rows[i-1]["date"]}
+                      signals.append({"type": "SELL", **exit_rec})
+                      if entry is not None:
+                          closed_trades.append({
+                              "entry_date": entry["date"],
+                              "entry_signal_date": entry["signal_date"],
+                              "exit_date": exit_rec["date"],
+                              "exit_signal_date": exit_rec["signal_date"],
+                              "return": exit_rec["price"] / entry["price"] - 1.0,
+                          })
+                          entry = None
+              equity_close = cash + shares * r["adj_close"]
+              equity_curve.append({"date": r["date"], "equity": equity_close, "holding": holding})
+
+          final_equity = equity_curve[-1]["equity"]
+          total_return = final_equity - 1.0
+          start_date = datetime.strptime(equity_curve[0]["date"], "%Y-%m-%d").date()
+          end_date = datetime.strptime(equity_curve[-1]["date"], "%Y-%m-%d").date()
+          years = (end_date - start_date).days / 365.2425
+          cagr = final_equity ** (1/years) - 1 if years > 0 else None
+
+          peak = -1.0
+          max_dd = 0.0
+          daily_returns = []
+          prev_eq = None
+          for p in equity_curve:
+              eq = p["equity"]
+              peak = max(peak, eq)
+              max_dd = min(max_dd, eq / peak - 1.0)
+              if prev_eq is not None:
+                  daily_returns.append(eq / prev_eq - 1.0)
+              prev_eq = eq
+          vol = statistics.stdev(daily_returns) * math.sqrt(252) if len(daily_returns) > 1 else None
+          sharpe = (statistics.mean(daily_returns) / statistics.stdev(daily_returns) * math.sqrt(252)) if len(daily_returns) > 1 and statistics.stdev(daily_returns) else None
+          exposure = sum(1 for p in equity_curve if p["holding"]) / len(equity_curve)
+
+          start_row = rows[start_idx]
+          end_row = rows[end_idx]
+          benchmark_equity = end_row["adj_close"] / start_row["adj_open"]
+          benchmark_total = benchmark_equity - 1
+          benchmark_cagr = benchmark_equity ** (1/years) - 1
+          bench_curve = []
+          for i in range(start_idx, end_idx + 1):
+              bench_curve.append(rows[i]["adj_close"] / start_row["adj_open"])
+          peak = -1
+          benchmark_max_dd = 0.0
+          bench_daily = []
+          for i, eq in enumerate(bench_curve):
+              peak = max(peak, eq)
+              benchmark_max_dd = min(benchmark_max_dd, eq/peak - 1)
+              if i:
+                  bench_daily.append(eq / bench_curve[i-1] - 1)
+          benchmark_sharpe = statistics.mean(bench_daily)/statistics.stdev(bench_daily)*math.sqrt(252) if statistics.stdev(bench_daily) else None
+
+          wins = sum(1 for t in closed_trades if t["return"] > 0)
+          losses = sum(1 for t in closed_trades if t["return"] <= 0)
+          last = rows[end_idx]
+          prev = rows[end_idx-1]
+
+          out = {
+              "test_type": "equivalent_rule_backtest_not_LEAN_engine",
+              "symbol": SYMBOL,
+              "data_source": "Yahoo Finance Chart API",
+              "data_source_host": urllib.parse.urlparse(source_url).netloc,
+              "period": {"start": start_row["date"], "end": end_row["date"]},
+              "rules": {
+                  "fast_sma": FAST,
+                  "slow_sma": SLOW,
+                  "signal": "SMA20>SMA50 long; SMA20<=SMA50 cash",
+                  "execution": "signal confirmed at close; rebalance 100%/0% at next trading-day adjusted open",
+                  "fees_slippage_tax": 0,
+                  "cash_interest": 0,
+              },
+              "strategy": {
+                  "total_return": total_return,
+                  "cagr": cagr,
+                  "max_drawdown": max_dd,
+                  "annual_volatility": vol,
+                  "sharpe_rf0": sharpe,
+                  "exposure": exposure,
+                  "closed_round_trips": len(closed_trades),
+                  "wins": wins,
+                  "losses": losses,
+                  "win_rate": wins/len(closed_trades) if closed_trades else None,
+                  "ending_equity_per_1": final_equity,
+              },
+              "buy_hold": {
+                  "total_return": benchmark_total,
+                  "cagr": benchmark_cagr,
+                  "max_drawdown": benchmark_max_dd,
+                  "sharpe_rf0": benchmark_sharpe,
+                  "ending_equity_per_1": benchmark_equity,
+              },
+              "latest_signal": {
+                  "date": last["date"],
+                  "adj_close": last["adj_close"],
+                  "sma20": last["sma20"],
+                  "sma50": last["sma50"],
+                  "regime_long": last["regime"],
+                  "previous_date": prev["date"],
+              },
+              "signals": signals,
+              "closed_trades": closed_trades,
+              "data_points_total": len(rows),
+              "backtest_trading_days": len(equity_curve),
+              "fetch_errors_before_success": errors,
+          }
+          Path("qqq_sma_20_50_result.json").write_text(json.dumps(out, indent=2), encoding="utf-8")
+          print("CIS_BACKTEST_RESULT_BEGIN")
+          print(json.dumps(out, indent=2))
+          print("CIS_BACKTEST_RESULT_END")
+          PY
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: qqq-sma-20-50-result
+          path: qqq_sma_20_50_result.json
+          if-no-files-found: error
+          retention-days: 1
