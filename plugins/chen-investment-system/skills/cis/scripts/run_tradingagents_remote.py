@@ -4,9 +4,10 @@
 Input:  runtime/tradingagents/request.json
 Output: runtime/tradingagents/result.json and result.md
 
-The default backend is local Ollama on the Actions runner, so the bridge does
-not require a third-party LLM API key. Cloud OpenAI-compatible endpoints remain
-supported as an optional quality upgrade.
+The default backend is local Ollama on the Actions runner. Cloud
+OpenAI-compatible endpoints such as NVIDIA NIM are supported by setting
+backend=openai_compatible, backend_url, model names, and the repository secret
+NVIDIA_API_KEY.
 """
 
 from __future__ import annotations
@@ -181,9 +182,15 @@ def configure_llm(req: dict[str, Any], config: dict[str, Any]) -> None:
         config["llm_provider"] = "ollama"
         config["backend_url"] = req["backend_url"]
     else:
-        api_key = os.getenv("TRADINGAGENTS_API_KEY") or os.getenv("OPENAI_COMPATIBLE_API_KEY")
+        api_key = (
+            os.getenv("NVIDIA_API_KEY")
+            or os.getenv("TRADINGAGENTS_API_KEY")
+            or os.getenv("OPENAI_COMPATIBLE_API_KEY")
+        )
         if not api_key:
-            raise RuntimeError("TRADINGAGENTS_API_KEY is required for openai_compatible backend")
+            raise RuntimeError(
+                "NVIDIA_API_KEY (preferred) or TRADINGAGENTS_API_KEY is required for openai_compatible backend"
+            )
         os.environ["OPENAI_COMPATIBLE_API_KEY"] = api_key
         config["llm_provider"] = "openai_compatible"
         config["backend_url"] = req["backend_url"]
@@ -232,8 +239,6 @@ def main() -> int:
         config = DEFAULT_CONFIG.copy()
         configure_llm(req, config)
 
-        # Use the keyless data stack where possible. External data still needs
-        # CIS evidence auditing because provider availability can vary by run.
         config["data_vendors"] = dict(config.get("data_vendors") or {})
         config["data_vendors"].update({
             "core_stock_apis": "yfinance",
