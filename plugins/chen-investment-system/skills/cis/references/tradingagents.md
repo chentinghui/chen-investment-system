@@ -89,6 +89,17 @@ external_decision_candidate
 
 ## 远程模型后端
 
+### NVIDIA NIM 默认策略
+
+当仓库存在 `NVIDIA_API_KEY` 且使用 `https://integrate.api.nvidia.com/v1` 时，CIS 默认使用：
+
+- `quick_model = deepseek-ai/deepseek-v4-flash`
+- `deep_model = deepseek-ai/deepseek-v4-flash`
+
+`nvidia/nemotron-3-ultra-550b-a55b` 不再作为 CIS 默认模型，也不应在普通 quick / standard / deep / holding_review 中自动启用。只有用户明确要求重新启用 Ultra 时，才允许本次请求显式指定。
+
+该策略优先目标是降低 TradingAgents 多 Agent 串行调用的总延迟。模型强弱不能绕过 CIS 证据审计、风险门、八维评分与四层交易框架。
+
 ### 零密钥 baseline
 
 默认远程 fallback 可在 GitHub Actions 中安装 Ollama，并运行 Qwen3。当前实现强制将 Ollama 服务上下文提高到 32K，避免 GitHub CPU 环境默认 4K 上下文无法容纳 TradingAgents 提示词。
@@ -97,7 +108,7 @@ external_decision_candidate
 
 ### 可选云后端
 
-`run_tradingagents_remote.py` 支持 `backend=openai_compatible`。仓库存在 `TRADINGAGENTS_API_KEY` secret 且请求明确给出 `backend_url`、模型 ID 时，可以在同一架构下切到兼容端点，无需修改 CIS 流程。
+`run_tradingagents_remote.py` 支持 `backend=openai_compatible`。仓库存在 `NVIDIA_API_KEY` secret 且请求明确给出 `backend_url`、模型 ID 时，可以在同一架构下切到兼容端点，无需修改 CIS 流程。
 
 不得把 secret 写入 request、result、日志或普通仓库文件。
 
