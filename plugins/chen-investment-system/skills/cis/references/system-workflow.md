@@ -77,14 +77,14 @@ earnings  → fundamentals + catalyst_macro + risk_resilience
 
 每个已使用 Regime 信号必须登记独立 `signal_as_of`。缺失日期、未来日期或超过 baseline 新鲜度容忍范围时，Regime 降级为 `insufficient` 或拒绝输入。
 
-## 8. 四层交易框架 + Tactical Gate
+## 8. 四层交易框架 + Tactical R/R Gate
 
 涉及买卖、持仓、止盈止损或具体价位时执行：趋势 → 价格 → 成交 → 风险。卖出必须同时覆盖盈利止盈与防守止损。
 
 对 `decision_context=tactical` 或明确短线做差价的买入问题，再执行 `scripts/tactical_setup_gate.py`：
 
 ```text
-Price / Session Guard
+Price/Session Guard
 Entry Zone
 Chase Limit
 Stop / Invalidation
