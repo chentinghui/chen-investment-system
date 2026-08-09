@@ -21,29 +21,16 @@ CIS Core 的职责仅包括：
 - `settle_due_predictions.py`：实验性结果结算；
 - `evaluate_cis_predictions.py`：历史表现/校准诊断。
 
-需要验证**可执行交易策略、技术规则、仓位规则、订单/费用/持仓路径**时，不把 `backtest_factor_strategy.py` 冒充完整策略回测；优先路由外部 QuantConnect LEAN：
-
-```text
-integrations/lean/cis_lean_adapter.py
-```
-
-详细边界见：
-
-```text
-plugins/chen-investment-system/skills/cis/references/quantconnect-lean.md
-plugins/chen-investment-system/skills/cis/references/backtest-validation.md
-```
-
 ## 边界
 
 1. 分析一只股票时，CIS Core **不得因为这些文件存在而自动运行它们**。
 2. Quant 仅在股票池筛选/Top N 任务按需启用。
-3. Baseline Backtest 仅用于轻量横截面因子/Top-N sanity check；完整策略级回测优先外部 LEAN。
-4. Prediction/Evaluation 仅在用户明确要求记录、复盘或校准时启用。
-5. Extension 或 LEAN 外部引擎故障不得阻塞 CIS Core 的正常股票分析。
-6. Extension/LEAN 都不拥有 CIS 最终动作权，也不得自动修改生产评分权重。
-7. TradingAgents 7 天 TTL 与 Anthropic Financial Services 上游读取策略仍由 CIS Core/对应外部模块规范管理，不属于本扩展。
-8. 用户明确要求“用 LEAN 回测”时，不能用本目录 baseline evaluator 静默替代并声称已运行 LEAN。
+3. Baseline Backtest 仅用于轻量横截面因子/Top-N sanity check；当前仓库没有独立事件驱动交易/回测引擎。
+4. 如果任务需要订单撮合、复杂持仓路径、期权生命周期或其他当前 evaluator 未实现的能力，必须明确报告能力不足，不得把 baseline evaluator 冒充完整策略回测。
+5. Prediction/Evaluation 仅在用户明确要求记录、复盘或校准时启用。
+6. Extension 故障不得阻塞 CIS Core 的正常股票分析。
+7. Extension 不拥有 CIS 最终动作权，也不得自动修改生产评分权重。
+8. TradingAgents 7 天 TTL 与 Anthropic Financial Services 上游读取策略仍由 CIS Core/对应外部模块规范管理，不属于本扩展。
 
 ## 0.4.5 Data / Evaluation Hardening
 
@@ -60,7 +47,7 @@ plugins/chen-investment-system/skills/cis/references/backtest-validation.md
 - `cost_bps` 必须有限且非负；
 - forward / benchmark return 不能低于 -100%；
 - 仍要求 point-in-time、survivorship-aware 输入；
-- 当前脚本是横截面 baseline evaluator，不实现 LEAN 的事件驱动订单/持仓/期权生命周期能力。
+- 当前脚本是横截面 baseline evaluator，不实现完整事件驱动订单/持仓/期权生命周期能力。
 
 ### Prediction / Recorder
 
@@ -97,4 +84,4 @@ Yahoo Adjusted Close 缺失时不再 fallback 到 raw close。缺少目标 sessi
 
 ## 当前定位
 
-该扩展保留筛选、轻量横截面验证和复盘能力，但不构成 CIS 的默认数据层或自动绩效系统。策略级回测由外部 QuantConnect LEAN 承担；即使 LEAN 或本扩展不可用，也不影响 CIS Core 的普通股票分析结论。
+该扩展保留筛选、轻量横截面验证和复盘能力，但不构成 CIS 的默认数据层、自动绩效系统或完整交易引擎。即使本扩展不可用，也不影响 CIS Core 的普通股票分析结论。
