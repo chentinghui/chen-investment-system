@@ -1,6 +1,6 @@
-# CIS 统一评分引擎（0–100，0.4.2）
+# CIS 统一评分引擎（0–100，0.4.3）
 
-评分是研究综合工具，不是自动交易器。任何分数都必须服从 Evidence Gate、Risk Gate、Critical Dimension Gate、Market Regime（按需）、四层交易框架和组合数据门。
+评分是研究综合工具，不是自动交易器。任何分数都必须服从 Evidence Gate、Risk Gate、Critical Dimension / Context Checks、Market Regime（按需）、Tactical Gate（短线按需）、四层交易框架和组合数据门。
 
 ## 当前校准状态
 
@@ -8,7 +8,7 @@
 
 - 状态：`production_heuristic_pending_calibration`
 - 不允许因为一次或少量回测结果自动调整权重。
-- `performance-loop.md` 负责检验总分、各维度与未来收益/超额收益的关系。
+- `performance-loop.md` 仅作为可选 Extension 校准规范，不属于日常 Core。
 - 权重变化必须有足够样本、样本外结果、不同 Regime 稳定性和明确变更理由，并版本化修改。
 
 ## 维度与权重
@@ -24,6 +24,19 @@
 | positioning | 5 | 机构/资金流/拥挤度等增量证据 |
 | risk_resilience | 10 | 抗风险能力；越高越稳健 |
 | **合计** | **100** | |
+
+## Quality Score 与 Tactical Setup 分离
+
+0.4.3 不凭感觉重写八维权重。CIS Score 继续回答“标的整体研究质量/吸引力如何”；短线是否适合现在做差价，由独立 Tactical Gate 回答。
+
+因此允许出现：
+
+```text
+CIS Quality Score = 88
+Tactical Gate = blocked_do_not_chase
+```
+
+这表示公司/研究质量高，但当前价格赔率差或已越过追价上限。不得把高分直接翻译成“现在买”。
 
 ## 计算
 
@@ -47,7 +60,7 @@ audit_status = unverified
 risk_status  = unverified
 ```
 
-调用者没有明确提供 `pass` 时，**禁止**进入 `decision_grade`。不得把“没有发现错误”当成“已经审计通过”。
+调用者没有明确提供 `pass` 时，**禁止**进入 `decision_grade`。`audit_status`、`risk_status`、`risk_override` 使用严格枚举；`critical_blocked` 与 context checks 必须是真正 JSON boolean，字符串 `"false"` / `"true"` 会被拒绝。
 
 以下任一成立时，即使 coverage 足够，也不得升级为决策级：
 
@@ -56,10 +69,11 @@ risk_status  = unverified
 - `risk_override=block`；
 - 与结论直接相关的关键维度 `runtime_readiness=blocked`；
 - Critical Dimension 缺失；
+- Tactical 必需 Context Check 未完成；
 - 关键市场/财务数据截止时间不明；
 - 涉及仓位但组合数据门不满足。
 
-## Critical Dimension Gate
+## Critical Dimension / Context Check Gate
 
 Coverage 不能替代关键维度。当前确定性基线：
 
@@ -67,12 +81,38 @@ Coverage 不能替代关键维度。当前确定性基线：
 generic   → fundamentals + valuation + risk_resilience
 long_term → fundamentals + growth + valuation + risk_resilience
 tactical  → technical + risk_resilience
+             + price_context=True
+             + catalyst_event_review=True
 earnings  → fundamentals + catalyst_macro + risk_resilience
 ```
+
+`tactical` 的两个 context checks 只表示检查过程已完成，不要求催化剂一定为正。可以得到“已检查、无明确催化剂”，但不能“没有检查就默认通过”。
 
 例如 valuation 完全缺失时，即使其余维度刚好形成 85% coverage，也只能是 `provisional`，不能 `decision_grade`。
 
 ETF/QDII 不使用上述股票 Critical Dimension 组合替代产品门；ETF 仍必须通过产品身份、溢价、流动性、时差/申赎等专属 Gate。
+
+## Tactical R/R Gate 边界
+
+`scripts/tactical_setup_gate.py` 不修改 CIS Score，只检查：
+
+- Price / Session 语义；
+- Entry Zone；
+- Chase Limit；
+- Stop / Invalidation；
+- Target 1 / 2；
+- Reward / Risk。
+
+按 Entry Zone 中最差 Target 1 R/R 的 baseline：
+
+```text
+<1.0       reject
+1.0-<1.5   weak_setup
+1.5-<2.0   acceptable
+>=2.0      attractive
+```
+
+阈值仍需未来样本验证，不作为已证明最优参数。
 
 ## Quant 与 CIS Score 的边界
 
@@ -98,7 +138,7 @@ Regime 不机械加减总分。它作为 `catalyst_macro`、`risk_resilience` �
 - 55–69：`考虑减持` 候选
 - 0–54：`考虑退出` 候选
 
-**最终动作不能只由分数决定。** 必须再经过四层交易框架、估值/基本面失效条件、持仓成本、权重、集中度、资金需求和风险预算。
+**最终动作不能只由分数决定。** 必须再经过 Tactical/Four-layer、估值/基本面失效条件、持仓成本、权重、集中度、资金需求和风险预算。
 
 ## 评分纪律
 
