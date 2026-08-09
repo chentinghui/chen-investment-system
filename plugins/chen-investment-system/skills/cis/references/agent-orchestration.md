@@ -1,4 +1,4 @@
-# CIS 0.4.2 编排协议
+# CIS 0.4.5 编排协议
 
 ## 1. 最终控制权
 
@@ -10,10 +10,10 @@
 2. Runtime Guard：读取当前 GitHub `main` 和 TradingAgents 上游审查状态。
 3. ChatGPT-native TradingAgents Methodology 完成通用多角色研究。
 4. DCF/Comps/Earnings/三表等专业子问题按需调用 Anthropic。
-5. Evidence Audit + CIS Risk Gate。
+5. Evidence Audit + CIS Risk Gate；机器枚举统一为 `audit_status/risk_status = pass|unresolved|fail|unverified`，`risk_override=none|block`。
 6. Critical Dimension Gate + CIS 八维评分。
 7. 当前市场环境会改变交易计划时加入 Market Regime。
-8. 涉及买卖/价位时执行四层交易框架；涉及真实仓位时执行组合门。
+8. 涉及买卖/价位时执行四层交易框架；短线增加 Price/Session + Quote Freshness + Tactical R/R + Setup Lifecycle；涉及真实仓位时执行组合门。
 9. 输出最终中文分析结论和证伪条件。
 
 ## 3. Optional Research Tooling 路由
@@ -65,13 +65,13 @@ Evidence Audit
         ↓
 CIS Risk Gate
         ↓
-Critical Dimensions
+Critical Dimensions / Context Checks
         ↓
 CIS 八维评分
         ↓
 Market Regime（按需）
         ↓
-四层交易 / ETF / Portfolio Gate
+Tactical R/R / 四层交易 / ETF / Portfolio Gate
         ↓
 CIS 最终中文结论
 ```
@@ -81,3 +81,5 @@ Optional Research Tooling 是外围输入/研发能力，不追加到每次默�
 ## 9. 原版 TradingAgents
 
 只有用户明确要求时运行。其 Portfolio Manager 结论统一记为 `external_decision_candidate`，只能作为外部验证证据，不能覆盖 CIS 最终控制权。
+
+远程执行采用安全隔离：第三方 TradingAgents 代码所在 Job 仅有 `contents: read`；结果作为 Artifact 交给不持有 LLM Secret 的 trusted publisher 写回。Cloud/secret-backed 运行要求当前上游 SHA 已被审查；未审查最新 main 只能做零密钥 smoke test。
