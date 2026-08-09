@@ -1,4 +1,4 @@
-# ChatGPT-native TradingAgents Methodology（CIS 0.4.4）
+# ChatGPT-native TradingAgents Methodology（CIS 0.4.5）
 
 本文件定义 CIS 的默认股票研究方法。它吸收 `TauricResearch/TradingAgents` 的多角色结构，但默认由当前 ChatGPT 会话直接执行，不要求运行 TradingAgents Python，也不要求外部 LLM API。
 
@@ -76,6 +76,18 @@ Tactical Price/RR Gate（短线按需）→ 四层交易 / ETF / 组合门
 
 `methodology_candidate` 不是 TradingAgents 官方 `external_decision_candidate`。
 
+## Agent ↔ Score 契约
+
+方法论角色返回到 CIS 确定性评分前，质量门字段统一为：
+
+```text
+audit_status = unverified | pass | fail | unresolved
+risk_status  = unverified | pass | fail | unresolved
+risk_override = none | block
+```
+
+`conditional` / `caution` 只可作为文字说明，不作为机器枚举，防止 Agent 文档与 `score_cis.py` 漂移。
+
 ## 与 Quant Engine 的关系
 
 大股票池任务允许先使用 `quant-engine.md` 做横截面预筛：
@@ -94,7 +106,7 @@ Quant 不能替代 Bull/Bear、估值、风险或证据审计。
 - 需要对 ChatGPT-native 方法论做 A/B 验证；
 - 维护者需要验证上游新 Agent / Prompt / Graph / Tool / Risk 流程是否值得吸收。
 
-原版运行路径见 `tradingagents.md`，远程执行每次拉取上游当前 `main`。
+原版运行路径见 `tradingagents.md`。远程显式运行仍以当时 upstream `main` 为目标；0.4.5 起 secret-backed run 只有在当前 main SHA 等于 `reviewed_sha` 时才允许，未审查最新 main 仅可零密钥 smoke test。
 
 ## 上游检查：7天 TTL + 确定性执行器
 
@@ -120,6 +132,6 @@ TradingAgents 上游不使用定时 GitHub Actions 监控，也不在每次股�
 - 模型角色不是证据来源；每个事实仍要落到真实数据源。
 - 代码仓库更新不代表行情、财报或新闻实时。
 - 历史日期研究禁止使用 `analysis_date` 之后的信息。
-- 短线分析中 exchange/session、quote freshness、`last_close`、盘前、盘后和 regular live 报价必须明确区分，关键新闻/催化剂必须检查当前最新公开信息。
+- 短线分析中 session、quote freshness、`last_close`、盘前、盘后和 regular live 报价必须明确区分；active quote 的 `quote_timestamp` 本身必须属于相同 session，关键新闻/催化剂必须检查当前最新公开信息。
 - Bull/Bear 的任务是暴露不确定性，不是制造戏剧化争论。
 - 缺失数据不填 0、不猜测；按 CIS coverage / Critical Dimension Gate 处理。
