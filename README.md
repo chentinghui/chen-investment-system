@@ -1,6 +1,6 @@
 # 陈氏投资系统（Chen Investment System，CIS）
 
-当前版本：**0.4.3**
+当前版本：**0.4.4**
 
 CIS 是一个中文系统化股票研究控制层。它的核心职责是**分析**：组织证据、多角色研究、风险审查、评分、市场环境和交易计划。CIS 不自动下单，也不要求每次研究都运行量化、回测或历史绩效模块。
 
@@ -19,11 +19,11 @@ Evidence Audit + Risk Review（fail-closed）
   ↓
 Critical Dimension / Context Checks
   ↓
-CIS 八维 Quality Score
+CIS 八维 Quality Score / Research Grade
   ↓
 Market Regime（按交易问题需要）
   ↓
-Price/Session Guard + Tactical R/R Gate（短线按需）
+Exchange-aware Price/Session + Quote Freshness + Tactical R/R Gate（短线按需）
   ↓
 四层交易 / ETF-QDII / Portfolio Gate
   ↓
@@ -32,16 +32,18 @@ Price/Session Guard + Tactical R/R Gate（短线按需）
 
 日常单股分析只运行与当前问题相关的 Core 能力。CIS Core 的失败条件不会因为外围研发工具不可用而扩大。
 
-## 0.4.3 Tactical Hardening
+## 0.4.4 Tactical Edge-Case Hardening
 
-本版不增加新的多 Agent 或数据库，而是强化短线分析纪律：
+本版不增加新的 Agent、数据库或日常分析负担，只修复短线边界条件：
 
-- `score_cis.py` 对 `audit_status`、`risk_status`、`risk_override` 做严格枚举校验；`critical_blocked` 和 tactical context checks 必须是真正 JSON boolean，修复字符串 `"false"` 被当成 True 的问题；
-- `decision_context=tactical` 除 technical + risk_resilience 外，还必须完成 `price_context` 与 `catalyst_event_review`；没有正面催化剂可以是合法结果，但不能跳过检查；
-- 新增 `tactical_setup_gate.py`，严格区分 premarket / regular / afterhours / closed 与对应价格类型，`last_close` 不再冒充实时 current price；
-- 短线交易强制把 CIS Quality Score 与当前交易赔率分开，输出 Entry Zone、Chase Limit、Stop、Target、R/R；
-- Market Regime 每个已使用信号要求独立 `signal_as_of`，明显 stale 的组合直接降级为 `insufficient`；
-- Optional Prediction/Evaluation 默认观察周期调整为 **5/20/60 交易日**，并修复用研究日前收盘价当作后续可执行入场价的 look-ahead 问题。
+- **Exchange-aware Session Guard**：XNAS/XNYS 的 `market_session` 根据带时区时间戳推导并与输入交叉校验，周末/主要休市日不能再伪装成 `regular`；特殊临时休市仍由 Evidence Layer 额外核验。
+- **Quote Freshness 真正 fail-closed**：活跃交易时段必须提供 `quote_max_age_seconds`，陈旧报价不能通过 Price Context；`last_close` 必须对应最近一个已完成交易日。
+- **Setup Lifecycle**：价格已经越过 Stop 时不再错误返回 `wait_for_entry`；Hard Stop/已确认失效输出 `invalidated_reprice_required`，Target 1 已达到或越过输出 `setup_expired_reprice_required`。
+- **Stop Trigger Semantics**：支持 `hard_price | close_confirmation | technical_invalidation`；非 hard stop 必须明确 `stop_confirmation_met`，代码不替研究层猜测确认是否成立。
+- **Chase Limit 几何约束**：Long 必须 `entry_high <= chase_limit < target1`，Short 必须 `target1 < chase_limit <= entry_low`，避免追价上限已经超过目标价的无意义计划。
+- **Market Regime 类型与 freshness 修复**：数字字段拒绝 JSON boolean；stale/missing-dated 信号先排除，再根据剩余 fresh coverage 决定能否分类，而不是一条陈旧信号让整个 Regime 无条件失效。
+- **Regime 口径标准化**：新增 `us_broad_v1`（SPY + S&P500 breadth）和 `us_nasdaq_v1`（QQQ + Nasdaq-100 breadth），并固定 SMA50 slope 与 20D realized volatility 定义。
+- **Research Grade 与 Tactical Setup Readiness 分离**：高 CIS 分数不等于现在可以买；好的 Tactical setup 也不能伪造缺失的研究 coverage。
 
 ## Optional Research Tooling
 
@@ -105,13 +107,14 @@ earnings  → fundamentals + catalyst_macro + risk_resilience
 对短线做差价、具体买点或“现在能不能追”的问题，CIS 额外执行：
 
 ```text
-analysis_timestamp / quote_timestamp
-market_session / price_type
+exchange + analysis_timestamp / quote_timestamp
+session / price_type / quote freshness
 Entry Zone
 Chase Limit
-Stop / Invalidation
+Stop / Stop Type
 Target 1 / 2
 Reward / Risk
+Setup State
 ```
 
 按 Entry Zone 中最差 Target 1 R/R 的 baseline：
@@ -123,7 +126,18 @@ Reward / Risk
 >=2.0      attractive
 ```
 
-这些阈值是纪律 baseline，不是已经证明最优的参数。高 CIS Quality Score 也不能覆盖 `blocked_do_not_chase`。
+这些阈值是纪律 baseline，不是已经证明最优的参数。高 CIS Quality Score 也不能覆盖 `blocked_do_not_chase`、`invalidated_reprice_required` 或 `setup_expired_reprice_required`。
+
+## Market Regime
+
+当前 baseline 必须显式选择：
+
+```text
+us_broad_v1  → SPY + S&P500 breadth
+us_nasdaq_v1 → QQQ + Nasdaq-100 breadth
+```
+
+`missing/stale` 信号会从本次分类中排除；只有剩余 fresh coverage >=60% 且 fresh signals >=3 时才允许输出 experimental `risk_on / neutral / risk_off`。Regime 只是环境层，不直接触发买卖。
 
 ## 四层交易框架
 
