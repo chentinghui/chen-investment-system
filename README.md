@@ -30,37 +30,7 @@ US-equity Price/Session Baseline + Quote Freshness + Tactical R/R Gate（短线�
 最终中文分析结论
 ```
 
-日常单股分析只运行与当前问题相关的 Core 能力。外围研发工具或外部量化引擎不可用时，不阻塞 CIS Core。
-
-## External Quant Validation — QuantConnect LEAN
-
-CIS 0.4.5 接纳 **QuantConnect LEAN** 作为外部策略级量化验证/回测引擎：
-
-```text
-CIS 规则/策略
-  ↓
-Backtest Validation Policy
-  ↓
-integrations/lean/cis_lean_adapter.py
-  ↓
-External QuantConnect LEAN
-  ↓
-LEAN backtest JSON
-  ↓
-CIS 指标归一化 + 偏差/样本外/执行真实性审查
-```
-
-边界固定为：
-
-- LEAN 源码**不复制、不 vendor、不作为 git submodule** 放进 CIS；
-- LEAN 独立安装和升级，CIS 只维护 `integrations/lean/` 适配层；
-- 普通单股研究默认不运行 LEAN；
-- 可执行技术规则、仓位规则、股票/ETF/期权策略需要历史验证时，优先 LEAN；
-- 只有本次真实 `execution_status=success` 且解析到可识别 statistics JSON，才能声称“已运行 LEAN 回测”；
-- LEAN 输出 `decision_authority=none`，不能自动改 CIS 评分或最终买卖结论；
-- 当前集成**不启用 LEAN live trading / Broker 自动执行**。
-
-详细契约见 `integrations/lean/README.md` 和 `plugins/chen-investment-system/skills/cis/references/quantconnect-lean.md`。
+日常单股分析只运行与当前问题相关的 Core 能力。外围研发工具不可用时，不阻塞 CIS Core。
 
 ## 0.4.5 Contract & Security Hardening
 
@@ -76,8 +46,7 @@ CIS 指标归一化 + 偏差/样本外/执行真实性审查
 - **Reviewed SHA Gate**：Cloud/secret-backed 原版 TradingAgents 只有当前 upstream SHA 已被审查时才允许执行；未审查最新 main 只能做零密钥 Ollama smoke test。
 - **Evaluation 样本纪律**：5D/20D/60D 不再混成总体相关性；样本门槛优先按 unique `research_id`，避免把多个 horizon 当作独立实验。
 - **Public Ledger allowlist**：Prediction/Evaluation 公共记录只允许固定结构化字段，任意 notes/account/shares/cost_basis 等未批准字段直接拒绝。
-- **Quant / Baseline Backtest 数据质量**：Quant 拒绝重复 ticker 和单点伪横截面；baseline backtest 拒绝重复 `(date,ticker)` 与不可能的低于 -100% return。
-- **LEAN 外部化**：策略级回测优先 QuantConnect LEAN，现有轻量 backtest 只保留为横截面 baseline evaluator，避免维护两套默认交易引擎。
+- **Quant / Backtest 数据质量**：Quant 拒绝重复 ticker 和单点伪横截面；Backtest 拒绝重复 `(date,ticker)` 与不可能的低于 -100% return。
 
 ## Optional Research Tooling
 
@@ -90,13 +59,13 @@ extensions/research_tooling/
 它们不是日常单股分析链的一部分：
 
 - `quant_factor_engine.py`：大股票池/Top N 候选排序；
-- `backtest_factor_strategy.py`：轻量横截面 `date,ticker,score,forward_return` 因子/Top-N baseline evaluator；
+- `backtest_factor_strategy.py`：新规则、因子、阈值的历史验证；
 - `prediction_ledger.py`：可选研究记录；
 - `record_cis_research.py`：可选研究快照；
 - `settle_due_predictions.py`：实验性结果结算；
 - `evaluate_cis_predictions.py`：历史表现与校准诊断。
 
-路由原则：单股分析不自动调用这些工具；大股票池筛选才按需调用 Quant；横截面因子 sanity check 才调用 baseline Backtest；需要事件驱动、订单/费用/持仓路径的策略级回测时优先外部 LEAN；用户明确要求记录、复盘或校准时才调用 Evaluation。External/Extension 故障不得阻塞 CIS Core。
+路由原则：单股分析不自动调用这些工具；大股票池筛选才按需调用 Quant；验证规则才调用 Backtest；用户明确要求记录、复盘或校准时才调用 Evaluation。Extension 故障不得阻塞 CIS Core。
 
 ## TradingAgents 上游策略
 
@@ -199,4 +168,4 @@ us_nasdaq_v1 → QQQ + Nasdaq-100 breadth
 
 ## 风险声明
 
-CIS 用于研究组织、证据核验、筛选、回测和分析辅助，不构成收益承诺，也不默认连接 Broker 自动执行交易。模型、数据、因子和历史回测都可能失效；LEAN 回测同样不能自动消除前视偏差、幸存者偏差、过拟合或不现实的执行假设，最终投资决定仍需独立判断。
+CIS 用于研究组织、证据核验、筛选、回测和分析辅助，不构成收益承诺，也不连接 Broker 自动执行交易。模型、数据、因子和历史回测都可能失效，最终投资决定仍需独立判断。

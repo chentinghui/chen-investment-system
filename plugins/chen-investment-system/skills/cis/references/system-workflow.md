@@ -8,8 +8,7 @@
 4. 读取 `runtime/tradingagents/upstream-status.json`。TradingAgents 7 天 TTL 未到时使用稳定基线；到期后的下一次股票研究轻量检查上游 `main` SHA。新 SHA 标记 `review_required`，未经审查不得采用。
 5. 原版 TradingAgents 仅在用户明确要求运行/测试时启动；执行成功不等于研究质量通过。Secret-backed 远程运行要求当前 upstream SHA 已审查，第三方执行 Job 不拥有仓库写权限。
 6. 专业金融子问题按需路由 Anthropic Financial Services。
-7. Quant / Baseline Backtest / Prediction / Evaluation 不属于日常单股 Core，只有对应任务才从 `extensions/research_tooling/` 调用。
-8. QuantConnect LEAN 是独立外部量化验证引擎。只有策略级历史验证任务才读取 `quantconnect-lean.md` 与 `backtest-validation.md`，通过 `integrations/lean/cis_lean_adapter.py` 调用；LEAN 故障不得阻塞普通 Core。
+7. Quant / Backtest / Prediction / Evaluation 不属于日常单股 Core，只有对应任务才从 `extensions/research_tooling/` 调用。
 
 ## 1. Intake
 
@@ -28,25 +27,11 @@ quote_max_age_seconds（活跃时段）
 quote_session_date（closed / last_close）
 ```
 
-若任务是回测/规则验证，还要登记：
-
-```text
-strategy_or_rule
-backtest_engine: lean | baseline
-backtest_period
-benchmark
-key_parameters
-fee_slippage_assumptions
-out_of_sample_period
-```
-
 ## 2. Evidence
 
 登记来源等级、发布日期、资料期间、提取日期、事实、限制和冲突。历史任务必须防前视偏差。
 
 短线任务执行 Evidence Freshness Guard：价格/成交/技术必须有明确数据截止时间，Breaking News / Catalyst 必须检查当前最新公开信息；新鲜度不清楚时 Evidence Audit 不得 `pass`。活跃时段 stale quote、分析 session 与 quote observation session 冲突、错误 last-close session 均不能通过 Price Context。
-
-回测任务必须同时登记数据口径、时间覆盖、股票池构造和执行假设。引擎运行成功不能替代 point-in-time、survivorship、universe drift、费用/滑点和样本外检查。
 
 ## 3. Core Research
 
@@ -144,59 +129,21 @@ Tactical Setup Readiness / 当前交易计划状态
 
 避免把“好公司”直接等同于“现在值得买”。
 
-## 11. Quant / Backtest / Evaluation 路径
+## 11. Optional Research Tooling
 
-只有对应任务才调用；它们不是默认单股研究链。
-
-### 11.1 Quant Screening
+只有对应任务才调用：
 
 ```text
-extensions/research_tooling/quant_factor_engine.py
+extensions/research_tooling/
 ```
 
-- 大股票池/Top N 才运行；
-- ticker 唯一、同一 as_of；
-- 因子需最小横截面观测；
-- 只负责候选排序，候选仍要回到 CIS Core 深研。
+- 大股票池/Top N → `quant_factor_engine.py`；ticker 唯一、同一 as_of，因子需最小横截面观测；
+- 新规则/因子/阈值验证 → `backtest_factor_strategy.py`；同一 `(date,ticker)` 必须唯一；
+- 用户明确要求记录/复盘/校准 → Prediction / Evaluation 工具；公共 Ledger 使用 allowlist；
+- Evaluation 的 5D/20D/60D 相关性按 horizon 分开，样本门槛优先用 unique `research_id`；
+- Settlement 当前采用 next-session adjusted-close → target-session adjusted-close 研究指标，不能称为真实 next-open 交易 P&L；缺少终值保持 unresolved。
 
-### 11.2 Strategy Backtest — QuantConnect LEAN 优先
-
-需要验证可执行策略、技术规则、仓位规则、订单/费用/持仓路径时：
-
-```text
-references/quantconnect-lean.md
-references/backtest-validation.md
-        ↓
-integrations/lean/cis_lean_adapter.py
-        ↓
-External QuantConnect LEAN
-```
-
-只有本次 `execution_status=success` 且解析到可识别 statistics JSON，才能称为“已运行 LEAN”。成功结果默认：
-
-```text
-engine_role = external_quant_validation
-decision_authority = none
-research_quality = unreviewed
-```
-
-之后必须检查样本外、前视/幸存者偏差、执行真实性、费用/滑点和参数稳健性。LEAN 不自动修改生产规则，也不自动连接 Broker；当前 CIS 集成不启用 live trading。
-
-### 11.3 Baseline Cross-sectional Backtest
-
-仅当任务是 `date,ticker,score,forward_return` 的轻量横截面 sanity check，可使用：
-
-```text
-extensions/research_tooling/backtest_factor_strategy.py
-```
-
-同一 `(date,ticker)` 必须唯一。它不是 LEAN 的替代品，也不能冒充完整事件驱动策略回测。
-
-### 11.4 Prediction / Evaluation
-
-只有用户明确要求记录/复盘/校准时调用 Prediction / Evaluation 工具；公共 Ledger 使用 allowlist。Evaluation 的 5D/20D/60D 相关性按 horizon 分开，样本门槛优先用 unique `research_id`。Settlement 当前采用 next-session adjusted-close → target-session adjusted-close 研究指标，不能称为真实 next-open 交易 P&L；缺少终值保持 unresolved。
-
-External/Extension 故障不得阻塞 CIS Core，也不得自动修改生产规则。
+这些外围工具不属于默认单股分析链，故障不得阻塞 CIS Core，也不得自动修改生产规则。
 
 ## 12. 原版 TradingAgents 测试路径
 
