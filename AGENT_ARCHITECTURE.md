@@ -1,6 +1,6 @@
 # 陈氏投资系统：CIS 0.4.5 架构
 
-CIS 的核心职责是**股票分析与质量控制**，不是把量化、回测、预测数据库和外部运行时全部塞进默认链。QuantConnect LEAN 被放在独立 External Quant 层，只在策略级验证时调用。
+CIS 的核心职责是**股票分析与质量控制**，不是把量化、回测、预测数据库和外部运行时全部塞进默认链。
 
 ```text
 用户
@@ -30,43 +30,57 @@ Tactical Price/Session + Quote Freshness + R/R（短线按需）
 四层交易 / ETF-QDII / Portfolio Gate
   ↓
 最终中文结论
-
-策略/规则需要量化验证时另行分支：
-CIS Strategy / Rule
-  ↓
-Backtest Validation Policy
-  ↓
-integrations/lean/cis_lean_adapter.py
-  ↓
-External QuantConnect LEAN
-  ↓
-Backtest Statistics（unreviewed）
-  ↓
-偏差 / 样本外 / 成本 / 执行真实性审查
-  ↓
-量化证据回灌 CIS（无最终动作权）
 ```
 
-## Core、External Quant 与 Extension
+Alpha 研究按需走独立分支：
+
+```text
+WorldQuant BRAIN / Alpha Source
+  ↓
+CIS Alpha Research Agent
+  ↓
+Alpha Candidate Import
+  ↓
+Alpha Screen + Factor / OOS Diagnostics
+  ↓
+Evidence / Leakage / Cost / Capacity / Diversification Review
+  ↓
+量化证据回灌 CIS（decision_authority = none）
+```
+
+## Core 与 Extension
 
 CIS Core 只负责分析、证据、风险、评分和交易纪律。
-
-**External QuantConnect LEAN**：
-
-- 策略级事件驱动回测首选引擎；
-- 独立安装、独立升级；
-- 不 vendor、不复制、不作为 git submodule；
-- CIS 只维护 `integrations/lean/` 适配器和结果契约；
-- 当前只启用 backtest / result parsing，不启用 live trading 或 Broker 自动执行；
-- `execution_status=success` 不等于 `research_quality=accepted`。
 
 以下能力物理隔离在 `extensions/research_tooling/`，仅按需使用：
 
 - Quant Factor Ranking：股票池预筛；
-- Baseline Backtest：`date,ticker,score,forward_return` 横截面因子/Top-N sanity check；
+- Backtest：规则/因子/阈值验证；
 - Prediction/Evaluation：可选记录、结算和校准诊断。
 
-External/Extension 故障不得阻塞日常单股分析，也不得自动修改 CIS 生产权重。
+Alpha Discovery / Validation 物理隔离在 `extensions/alpha_research/`：
+
+- `worldquant/`：WorldQuant BRAIN Alpha 导入与研究筛选；
+- `factor_engine/`：Rank IC、Top-Bottom spread 等横截面诊断；
+- `ml_research/`：外部模型 prediction 的 train/validation/test 与 OOS 诊断；
+- 所有 Alpha Research 输出固定 `decision_authority = none`，不得自动交易或改写 CIS 生产评分权重。
+
+Extension 故障不得阻塞日常单股分析，也不得自动修改 CIS 生产权重。
+
+## WorldQuant BRAIN / Alpha Research Agent 边界
+
+WorldQuant BRAIN 是 **Alpha 候选来源**，不是 CIS 最终投资决策器。CIS 第一版只接收用户导出 JSON 或合法 API 返回 JSON，不保存 BRAIN 密码/API key，不自动提交 Alpha，也不自动下单。
+
+标准候选契约：
+
+```text
+schema_version = cis.alpha_candidate.v1
+source = worldquant_brain
+research_status = unreviewed
+decision_authority = none
+```
+
+BRAIN 指标通过只允许进入 `candidate_for_cis_validation`。升级为可用研究证据前仍必须检查经济解释、数据泄漏/前视偏差、样本外、换手/成本/容量以及相关性/分散化。
 
 ## 原版 TradingAgents
 
@@ -94,29 +108,6 @@ contents: write
 
 Cloud/secret-backed 原版运行只有在当前 upstream SHA 等于 `reviewed_sha` 时允许；未审查最新 main 只能零密钥 smoke test。
 
-## QuantConnect LEAN 边界
-
-```text
-engine = QuantConnect LEAN
-engine_role = external_quant_validation
-decision_authority = none
-execution_status = success | invalid_input | unavailable | error
-research_quality = unreviewed
-```
-
-LEAN 负责回答“这套可执行规则历史上怎么表现”，不负责回答“公司基本面值不值得投”，也不负责 CIS 最终买卖裁决。
-
-需要策略级回测时：
-
-```text
-references/quantconnect-lean.md
-+ references/backtest-validation.md
-        ↓
-integrations/lean/cis_lean_adapter.py
-```
-
-只有本次真实执行成功并解析到可识别 statistics JSON，才能声称 LEAN 已运行。Lean CLI / Docker 基础环境存在，只能说明 `runtime_readiness`，不能证明账户、数据、项目和策略已可执行。
-
 ## CIS 自写 Agent 的定位
 
 `plugins/chen-investment-system/agents/` 保存 CIS 角色契约：
@@ -137,21 +128,18 @@ risk_status  = unverified | pass | unresolved | fail
 risk_override = none | block
 ```
 
-Tactical setup 与 Research Grade 分开；高分不自动等于当前可以买。LEAN 的回测统计又是第三类独立证据，不能覆盖前两者。
+Tactical setup 与 Research Grade 分开；高分不自动等于当前可以买。
 
 ## 关键文件
 
 - 总入口：`plugins/chen-investment-system/skills/cis/SKILL.md`
 - 系统流程：`plugins/chen-investment-system/skills/cis/references/system-workflow.md`
 - 模块路由：`plugins/chen-investment-system/skills/cis/references/module-routing.md`
-- 外部模块：`plugins/chen-investment-system/skills/cis/references/external-modules.md`
-- LEAN 契约：`plugins/chen-investment-system/skills/cis/references/quantconnect-lean.md`
-- 回测验证：`plugins/chen-investment-system/skills/cis/references/backtest-validation.md`
-- LEAN 适配器：`integrations/lean/cis_lean_adapter.py`
 - Agent 登记：`plugins/chen-investment-system/skills/cis/references/agent-registry.md`
 - Agent 契约：`plugins/chen-investment-system/skills/cis/references/agent-contract.md`
 - TradingAgents 方法论：`plugins/chen-investment-system/skills/cis/references/tradingagents-methodology.md`
 - 原版 TradingAgents：`plugins/chen-investment-system/skills/cis/references/tradingagents.md`
 - 评分引擎：`plugins/chen-investment-system/skills/cis/references/scoring-engine.md`
 - 四层交易：`plugins/chen-investment-system/skills/cis/references/four-layer-trading-framework.md`
-- Optional Extensions：`extensions/research_tooling/`
+- Optional Research Tooling：`extensions/research_tooling/`
+- Alpha Research Agent：`extensions/alpha_research/`

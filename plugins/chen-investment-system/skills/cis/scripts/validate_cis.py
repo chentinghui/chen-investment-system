@@ -12,7 +12,7 @@ REPO_ROOT = ROOT.parents[3]
 REFS = ROOT / "references"
 SCRIPTS = ROOT / "scripts"
 EXT = REPO_ROOT / "extensions" / "research_tooling"
-LEAN = REPO_ROOT / "integrations" / "lean"
+ALPHA = REPO_ROOT / "extensions" / "alpha_research"
 
 
 def read(path: Path) -> str:
@@ -56,7 +56,6 @@ def main() -> int:
         "four-layer": read(REFS / "four-layer-trading-framework.md"),
         "ETF premium": read(REFS / "cross-border-etf-premium.md"),
         "quant": read(REFS / "quant-engine.md"),
-        "QuantConnect LEAN": read(REFS / "quantconnect-lean.md"),
         "backtest": read(REFS / "backtest-validation.md"),
         "performance": read(REFS / "performance-loop.md"),
         "evaluation cases": read(REFS / "evaluation-cases.md"),
@@ -64,7 +63,7 @@ def main() -> int:
         "root architecture": read(REPO_ROOT / "AGENT_ARCHITECTURE.md"),
         "agents README": read(PLUGIN_ROOT / "agents" / "README.md"),
         "extension README": read(EXT / "README.md"),
-        "LEAN integration README": read(LEAN / "README.md"),
+        "alpha README": read(ALPHA / "README.md"),
     }
     require_version(skill, "CIS skill")
     for label, text in docs.items():
@@ -76,12 +75,11 @@ def main() -> int:
 
     require(skill, (
         "CIS Core",
-        "External Quant Validation",
         "Optional Research Tooling",
+        "Alpha Research Agent",
+        "WorldQuant BRAIN",
         "extensions/research_tooling/",
-        "integrations/lean/cis_lean_adapter.py",
-        "references/quantconnect-lean.md",
-        "QuantConnect LEAN",
+        "extensions/alpha_research/",
         "check_tradingagents_upstream.py",
         "audit_status = unverified | pass | fail | unresolved",
         "risk_status  = unverified | pass | fail | unresolved",
@@ -101,10 +99,29 @@ def main() -> int:
         "setup_expired_reprice_required",
         "unique `research_id`",
         "Trusted Publisher",
-        "QuantConnect LEAN",
-        "integrations/lean/cis_lean_adapter.py",
-        "research_quality=unreviewed",
+        "Alpha Research Agent",
+        "worldquant/alpha_import.py",
+        "candidate_for_cis_validation",
     ), "module routing")
+    require(docs["module registry"], (
+        "WorldQuant BRAIN Alpha Source",
+        "CIS Alpha Research Agent",
+        "external_research_source",
+        "decision_authority = none",
+    ), "module registry")
+    require(docs["root architecture"], (
+        "CIS Alpha Research Agent",
+        "extensions/alpha_research/",
+        "cis.alpha_candidate.v1",
+        "decision_authority = none",
+    ), "root architecture")
+    require(docs["alpha README"], (
+        "WorldQuant BRAIN",
+        "cis.alpha_candidate.v1",
+        "candidate_for_cis_validation",
+        "decision_authority=none",
+        "out-of-sample validation",
+    ), "alpha README")
     require(docs["performance"], (
         "5 / 20 / 60 trading days",
         "unique `research_id`",
@@ -112,21 +129,24 @@ def main() -> int:
         "allowlist",
         "next_session_close_to_close_adjusted_price_return",
     ), "performance loop")
-    require(docs["QuantConnect LEAN"], (
-        "external_quant_validation",
-        "decision_authority = none",
-        "execution_status = success | invalid_input | unavailable | error",
-        "research_quality = unreviewed",
-        "integrations/lean/cis_lean_adapter.py",
-        "不启用 LEAN live trading",
-    ), "QuantConnect LEAN reference")
-    require(docs["backtest"], (
-        "QuantConnect LEAN",
-        "external_quant_validation",
-        "research_quality = unreviewed",
-        "Execution realism",
-        "integrations/lean/cis_lean_adapter.py",
-    ), "backtest validation")
+
+    no_lean_text = "\n".join((
+        skill,
+        docs["root README"],
+        docs["root architecture"],
+        docs["module registry"],
+        docs["module routing"],
+        docs["external modules"],
+        docs["system workflow"],
+    ))
+    forbid(no_lean_text, ("QuantConnect LEAN", "integrations/lean", "quantconnect-lean.md"), "no-LEAN architecture")
+    for forbidden_path in (
+        REPO_ROOT / "integrations" / "lean",
+        REPO_ROOT / ".github" / "workflows" / "cis-lean-qqq-engine-test.yml",
+        REFS / "quantconnect-lean.md",
+    ):
+        if forbidden_path.exists():
+            raise AssertionError(f"removed LEAN integration must stay absent: {forbidden_path}")
 
     evidence_agent = read(PLUGIN_ROOT / "agents" / "evidence-auditor.md")
     risk_agent = read(PLUGIN_ROOT / "agents" / "risk-manager.md")
@@ -171,28 +191,57 @@ def main() -> int:
             raise AssertionError(f"optional research tool leaked into CIS Core: {name}")
         read(EXT / name)
 
-    lean_adapter = read(LEAN / "cis_lean_adapter.py")
-    lean_tests = read(LEAN / "test_cis_lean_adapter.py")
-    require(lean_adapter, (
-        'SCHEMA_VERSION = "cis.lean.backtest.v1"',
-        'ENGINE_NAME = "QuantConnect LEAN"',
-        'ENGINE_ROLE = "external_quant_validation"',
+    alpha_import = read(ALPHA / "worldquant" / "alpha_import.py")
+    alpha_schema = read(ALPHA / "worldquant" / "alpha_schema.json")
+    alpha_validator = read(ALPHA / "worldquant" / "alpha_validator.py")
+    cross_section = read(ALPHA / "factor_engine" / "cross_section.py")
+    factor_test = read(ALPHA / "factor_engine" / "factor_test.py")
+    model_test = read(ALPHA / "ml_research" / "model_test.py")
+    alpha_tests = read(ALPHA / "test_alpha_research.py")
+
+    require(alpha_import, (
+        'SCHEMA_VERSION = "cis.alpha_candidate.v1"',
+        'SOURCE = "worldquant_brain"',
         '"decision_authority": "none"',
-        '"research_quality": "unreviewed"',
-        '"runtime_readiness": "lean_cli_missing"',
-        '"runtime_readiness": "docker_missing"',
-        '"statistics_raw"',
-        '"backtest"',
-        '"--output"',
-    ), "LEAN adapter")
-    require(lean_tests, (
-        "test_parses_standard_statistics_into_cis_contract",
-        "test_parses_nested_portfolio_statistics",
-        "test_discovers_result_and_ignores_order_event_json",
-        "test_readiness_is_unavailable_when_cli_or_docker_missing",
-        "test_backtest_fails_closed_when_lean_cli_missing",
-        "test_backtest_fails_closed_when_docker_missing",
-    ), "LEAN adapter tests")
+        '"offline_or_api_json"',
+        "normalize_worldquant_alpha",
+    ), "WorldQuant alpha importer")
+    require(alpha_schema, (
+        '"cis.alpha_candidate.v1"',
+        '"worldquant_brain"',
+        '"decision_authority"',
+        '"none"',
+    ), "WorldQuant alpha schema")
+    require(alpha_validator, (
+        "FORBIDDEN_KEY_FRAGMENTS",
+        "candidate_for_cis_validation",
+        "out_of_sample_validation",
+        '"decision_authority": "none"',
+    ), "WorldQuant alpha validator")
+    require(cross_section, (
+        "duplicate date/ticker observation",
+        "mean_rank_ic",
+        "rank_ic_hit_rate",
+        "mean_top_bottom_spread",
+    ), "alpha cross-section diagnostics")
+    require(factor_test, (
+        "cis.alpha_factor_test.v1",
+        "cis_alpha_factor_test",
+        '"decision_authority": "none"',
+    ), "alpha factor test")
+    require(model_test, (
+        "test split is required for out-of-sample model validation",
+        "model_training_performed",
+        '"decision_authority": "none"',
+        "oos_status",
+    ), "alpha model test")
+    require(alpha_tests, (
+        "test_normalizes_export_and_percent_metrics",
+        "test_good_screen_is_candidate_not_trade_authority",
+        "test_duplicate_date_ticker_is_rejected",
+        "test_requires_test_split_by_default",
+        "test_reports_present_oos_after_three_test_periods",
+    ), "alpha research tests")
 
     score = read(SCRIPTS / "score_cis.py")
     tactical = read(SCRIPTS / "tactical_setup_gate.py")
@@ -337,14 +386,14 @@ def main() -> int:
     validate_workflow = read(REPO_ROOT / ".github" / "workflows" / "cis-validate.yml")
     require(validate_workflow, (
         '"AGENT_ARCHITECTURE.md"',
-        '"integrations/lean/**"',
+        '"extensions/alpha_research/**"',
         "Validate CIS architecture and contracts",
         "Compile CIS Core",
-        "Compile LEAN Integration",
         "Compile Optional Research Tooling",
+        "Compile Alpha Research Agent",
         "Run CIS Core unit tests",
-        "Run LEAN Integration unit tests",
         "Run Optional Research Tooling unit tests",
+        "Run Alpha Research unit tests",
     ), "CIS validate workflow")
 
     status_text = read(REPO_ROOT / "runtime" / "tradingagents" / "upstream-status.json")
@@ -359,6 +408,8 @@ def main() -> int:
         "next_check_not_before",
         "use_time_check_with_7_day_ttl_stable_baseline",
     ), "TradingAgents upstream status")
+    if "lean" in status:
+        raise AssertionError("TradingAgents upstream status must not retain LEAN state")
 
     if (REPO_ROOT / ".github" / "workflows" / "cis-tradingagents-upstream-watch.yml").exists():
         raise AssertionError("scheduled TradingAgents upstream watch must remain removed")
@@ -371,11 +422,7 @@ def main() -> int:
         if forbidden_bundle.exists():
             raise AssertionError(f"third-party source must not be bundled directly: {forbidden_bundle.name}")
 
-    for forbidden_lean_bundle in (LEAN / "Lean", LEAN / "engine", LEAN / "upstream"):
-        if forbidden_lean_bundle.exists():
-            raise AssertionError(f"QuantConnect LEAN source must remain external: {forbidden_lean_bundle.name}")
-
-    print(f"CIS {CIS_VERSION} contract, security and LEAN integration validation passed")
+    print(f"CIS {CIS_VERSION} contract and security validation passed")
     return 0
 
 

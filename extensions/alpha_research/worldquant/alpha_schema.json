@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cis.local/schemas/cis.alpha_candidate.v1.json",
+  "title": "CIS Alpha Candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source",
+    "alpha_id",
+    "name",
+    "expression",
+    "hypothesis",
+    "settings",
+    "metrics",
+    "research_status",
+    "decision_authority",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {"const": "cis.alpha_candidate.v1"},
+    "source": {"const": "worldquant_brain"},
+    "alpha_id": {"type": "string", "minLength": 1},
+    "name": {"type": "string", "minLength": 1},
+    "expression": {"type": "string", "minLength": 1},
+    "hypothesis": {"type": ["string", "null"]},
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["region", "universe", "delay", "neutralization", "decay", "truncation"],
+      "properties": {
+        "region": {"type": ["string", "null"]},
+        "universe": {"type": ["string", "null"]},
+        "delay": {"type": ["integer", "null"], "minimum": 0},
+        "neutralization": {"type": ["string", "null"]},
+        "decay": {"type": ["number", "null"], "minimum": 0},
+        "truncation": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sharpe", "annual_return", "turnover", "fitness", "margin", "max_drawdown", "coverage"],
+      "properties": {
+        "sharpe": {"type": ["number", "null"]},
+        "annual_return": {"type": ["number", "null"]},
+        "turnover": {"type": ["number", "null"], "minimum": 0},
+        "fitness": {"type": ["number", "null"]},
+        "margin": {"type": ["number", "null"]},
+        "max_drawdown": {"type": ["number", "null"]},
+        "coverage": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "research_status": {"const": "unreviewed"},
+    "decision_authority": {"const": "none"},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["import_mode", "source_payload_sha256"],
+      "properties": {
+        "import_mode": {"enum": ["offline_or_api_json"]},
+        "source_payload_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

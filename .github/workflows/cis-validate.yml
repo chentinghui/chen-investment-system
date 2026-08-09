@@ -5,9 +5,8 @@ on:
     paths:
       - "plugins/chen-investment-system/**"
       - "extensions/research_tooling/**"
-      - "integrations/lean/**"
+      - "extensions/alpha_research/**"
       - ".github/workflows/cis-validate.yml"
-      - ".github/workflows/cis-lean-qqq-engine-test.yml"
       - ".github/workflows/cis-tradingagents.yml"
       - "runtime/tradingagents/upstream-status.json"
       - "README.md"
@@ -45,14 +44,6 @@ jobs:
             plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py \
             plugins/chen-investment-system/skills/cis/scripts/validate_cis.py
 
-      - name: Compile LEAN Integration
-        run: |
-          python -m py_compile \
-            integrations/lean/cis_lean_adapter.py \
-            integrations/lean/test_cis_lean_adapter.py \
-            integrations/lean/strategies/qqq_sma20_50/strategy_logic.py \
-            integrations/lean/strategies/qqq_sma20_50/test_strategy_logic.py
-
       - name: Compile Optional Research Tooling
         run: |
           python -m py_compile \
@@ -63,6 +54,16 @@ jobs:
             extensions/research_tooling/settle_due_predictions.py \
             extensions/research_tooling/evaluate_cis_predictions.py
 
+      - name: Compile Alpha Research Agent
+        run: |
+          python -m py_compile \
+            extensions/alpha_research/worldquant/alpha_import.py \
+            extensions/alpha_research/worldquant/alpha_validator.py \
+            extensions/alpha_research/factor_engine/cross_section.py \
+            extensions/alpha_research/factor_engine/factor_test.py \
+            extensions/alpha_research/ml_research/model_test.py \
+            extensions/alpha_research/test_alpha_research.py
+
       - name: Run CIS Core unit tests
         run: |
           python -m unittest discover \
@@ -70,21 +71,16 @@ jobs:
             -p "test_*.py" \
             -v
 
-      - name: Run LEAN Integration unit tests
-        run: |
-          python -m unittest discover \
-            -s integrations/lean \
-            -p "test_*.py" \
-            -v
-
-      - name: Run LEAN strategy logic unit tests
-        run: |
-          cd integrations/lean/strategies/qqq_sma20_50
-          python -m unittest -v test_strategy_logic.py
-
       - name: Run Optional Research Tooling unit tests
         run: |
           python -m unittest discover \
             -s extensions/research_tooling \
+            -p "test_*.py" \
+            -v
+
+      - name: Run Alpha Research unit tests
+        run: |
+          python -m unittest discover \
+            -s extensions/alpha_research \
             -p "test_*.py" \
             -v
