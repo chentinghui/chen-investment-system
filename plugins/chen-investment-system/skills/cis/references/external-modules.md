@@ -22,7 +22,7 @@
 1. 第三方 TradingAgents 代码只在 `contents: read` Job 中执行；仓库写回由独立 trusted publisher 完成，publisher 不持有 LLM Secret，也不执行第三方代码。
 2. Cloud/secret-backed 运行只有在当前 upstream SHA 与 `reviewed_sha` 一致时才允许；未审查新 SHA 只能使用零密钥 Ollama smoke test。
 
-OpenAI-compatible provider 也使用固定凭据路由：NVIDIA endpoint 只使用 `NVIDIA_API_KEY`；自定义 HTTPS endpoint 只使用 `OPENAI_COMPATIBLE_API_KEY`，不跨 provider fallback。
+OpenAI-compatible provider 使用固定凭据路由：NVIDIA endpoint 只使用 `NVIDIA_API_KEY`；自定义 HTTPS endpoint 只使用 `OPENAI_COMPATIBLE_API_KEY`，不跨 provider fallback。
 
 ### 原版运行状态分层
 
@@ -42,33 +42,21 @@ Anthropic `financial-services` 是 CIS 首选专业金融 Skill 上游，用于 
 
 只有本次真实读取/执行对应 Skill 且关键输入完整时，才能标记为已使用。输出必须回灌 CIS Evidence Gate。
 
-## QuantConnect LEAN
+## 当前量化/回测边界
 
-- 上游：`QuantConnect/Lean`，作为 CIS **外部量化验证/回测引擎**；
-- CIS 不 vendor、不复制 LEAN 源码，不使用 git submodule；
-- CIS 只维护 `integrations/lean/cis_lean_adapter.py` 和 `references/quantconnect-lean.md`；
-- 需要事件驱动策略、订单、费用、持仓路径、股票/ETF/期权等策略级回测时优先 LEAN；
-- `extensions/research_tooling/backtest_factor_strategy.py` 继续保留为轻量横截面 baseline evaluator；
-- 普通单股分析不自动运行 LEAN；
-- 当前集成只做本地 backtest 调用与结果 JSON 解析，不启用 live trading / Broker 自动执行。
-
-### LEAN 运行状态分层
+CIS 当前**不接入外部交易/回测引擎**。仓库内只保留可选 Python 研究工具：
 
 ```text
-execution_status = success | error | invalid_input | unavailable
-runtime_readiness = ready | lean_cli_missing | docker_missing | unavailable
-research_quality = unreviewed
-engine_role = external_quant_validation
-decision_authority = none
+extensions/research_tooling/
 ```
 
-只有本次真实调用适配器并且 `execution_status=success`、找到可识别的 statistics JSON，才能说“LEAN 回测已运行”。`runtime_readiness=ready` 只说明基础环境存在，不证明 QuantConnect 账户、数据、项目或策略已经可执行。
+其中：
 
-LEAN 的 CAGR、Drawdown、Sharpe、Win Rate 等结果只是历史策略证据。它不自动消除 look-ahead bias、survivorship bias、universe drift、restatement leakage、过拟合或不现实的成交/费用假设。所有成功结果仍必须经过 `backtest-validation.md`，未经审查保持 `research_quality=unreviewed`。
+- `quant_factor_engine.py`：大股票池候选排序；
+- `backtest_factor_strategy.py`：轻量横截面 baseline evaluator；
+- Prediction/Evaluation：研究记录、结算与校准。
 
-Lean CLI、Docker、账户、数据或项目不可用时，普通 CIS Core 必须继续运行；如果用户明确要求“用 LEAN 回测”，则必须明确报告 unavailable/error，不能用 baseline evaluator 冒充 LEAN。
-
-截至 2026-08-09，官方 Lean CLI 本地运行路径使用 Docker，官方文档当前要求付费组织层级。CIS 不保存 QuantConnect/Broker Secret，也不负责登录、组织 workspace 或数据授权。
+如果任务要求订单撮合、复杂持仓路径、期权生命周期或其他当前 Python evaluator 未实现的能力，必须明确说明能力不足，不得静默替代或夸大结果。
 
 ## Buffett / 其他可选方法
 
@@ -79,16 +67,10 @@ Lean CLI、Docker、账户、数据或项目不可用时，普通 CIS Core 必�
 - 代码/Skill 可用不等于数据已授权或实时；
 - 行情、财报、新闻、宏观、机构持仓、资金流必须记录实际来源和 `as_of`；
 - 短线行情必须记录 exchange、quote timestamp，并由 CIS 验证 regular / premarket / afterhours / last_close 语义及 quote freshness；
-- active quote 的 `quote_timestamp` 本身必须属于所声明的 session，不能把盘前旧报价包装成 regular live；
+- active quote 的 `quote_timestamp` 本身必须属于所声明的 session；
 - 历史研究必须使用 point-in-time 数据，禁止 look-ahead leakage；
 - 数据不可用时可降级到公开资料/用户资料，但必须说明覆盖限制。
 
 ## Optional Research Tooling
 
-Quant、Baseline Backtest、Prediction Ledger 和 Performance/Evaluation 是 CIS 仓库中的**可选外围研发工具**，统一位于：
-
-```text
-extensions/research_tooling/
-```
-
-它们不依赖外部 LLM，但也不属于日常单股 Core。只有筛选、轻量横截面规则验证、记录/复盘/校准任务才调用；其故障不得阻塞 CIS Core。需要更完整的可执行策略回测时，优先走外部 QuantConnect LEAN。Market Regime 与 Tactical Price/RR Gate 仍属于 CIS Core 的按需分析层。
+Quant、Baseline Backtest、Prediction Ledger 和 Performance/Evaluation 是 CIS 仓库中的**可选外围研发工具**。它们不依赖外部 LLM，也不属于日常单股 Core。只有筛选、轻量横截面规则验证、记录/复盘/校准任务才调用；其故障不得阻塞 CIS Core。Market Regime 与 Tactical Price/RR Gate 仍属于 CIS Core 的按需分析层。
