@@ -4,10 +4,10 @@ on:
   push:
     paths:
       - "plugins/chen-investment-system/**"
+      - "extensions/research_tooling/**"
       - ".github/workflows/cis-validate.yml"
       - ".github/workflows/cis-tradingagents.yml"
       - "runtime/tradingagents/upstream-status.json"
-      - "runtime/evaluations/**"
       - "README.md"
   workflow_dispatch:
 
@@ -30,23 +30,37 @@ jobs:
         run: |
           python plugins/chen-investment-system/skills/cis/scripts/validate_cis.py
 
-      - name: Compile deterministic and adapter scripts
+      - name: Compile CIS Core
         run: |
           python -m py_compile \
             plugins/chen-investment-system/skills/cis/scripts/score_cis.py \
             plugins/chen-investment-system/skills/cis/scripts/analyze_etf_premium.py \
-            plugins/chen-investment-system/skills/cis/scripts/quant_factor_engine.py \
-            plugins/chen-investment-system/skills/cis/scripts/backtest_factor_strategy.py \
             plugins/chen-investment-system/skills/cis/scripts/classify_market_regime.py \
-            plugins/chen-investment-system/skills/cis/scripts/evaluate_cis_predictions.py \
             plugins/chen-investment-system/skills/cis/scripts/check_tradingagents_upstream.py \
-            plugins/chen-investment-system/skills/cis/scripts/prediction_ledger.py \
             plugins/chen-investment-system/skills/cis/scripts/run_tradingagents.py \
-            plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py
+            plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py \
+            plugins/chen-investment-system/skills/cis/scripts/validate_cis.py
 
-      - name: Run deterministic unit tests
+      - name: Compile Optional Research Tooling
+        run: |
+          python -m py_compile \
+            extensions/research_tooling/quant_factor_engine.py \
+            extensions/research_tooling/backtest_factor_strategy.py \
+            extensions/research_tooling/prediction_ledger.py \
+            extensions/research_tooling/record_cis_research.py \
+            extensions/research_tooling/settle_due_predictions.py \
+            extensions/research_tooling/evaluate_cis_predictions.py
+
+      - name: Run CIS Core unit tests
         run: |
           python -m unittest discover \
             -s plugins/chen-investment-system/skills/cis/scripts \
+            -p "test_*.py" \
+            -v
+
+      - name: Run Optional Research Tooling unit tests
+        run: |
+          python -m unittest discover \
+            -s extensions/research_tooling \
             -p "test_*.py" \
             -v
