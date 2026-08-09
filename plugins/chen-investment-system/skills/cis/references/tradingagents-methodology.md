@@ -1,13 +1,14 @@
-# ChatGPT-native TradingAgents Methodology
+# ChatGPT-native TradingAgents Methodology（CIS 0.4.2）
 
-本文件定义 CIS 0.4.1 的默认股票研究方法。它吸收 `TauricResearch/TradingAgents` 的多角色结构，但默认由当前 ChatGPT 会话直接执行，不要求运行 TradingAgents Python，也不要求外部 LLM API。
+本文件定义 CIS 的默认股票研究方法。它吸收 `TauricResearch/TradingAgents` 的多角色结构，但默认由当前 ChatGPT 会话直接执行，不要求运行 TradingAgents Python，也不要求外部 LLM API。
 
 ## 核心原则
 
 - TradingAgents 在 CIS 中首先是一套研究方法论，不是日常必须启动的外部程序。
 - ChatGPT 直接承担多角色研究编排，并使用本次可核验的公开数据、连接器数据和用户资料。
-- 不声称“运行了原版 TradingAgents”，除非本次确实执行上游 Python 图并通过结果校验。
-- 方法论输出只是 CIS 的研究输入；CIS 保留证据门、风险门、八维评分、Market Regime、四层交易、ETF/QDII纪律、组合门和最终中文结论。
+- 不声称“运行了原版 TradingAgents”，除非本次确实执行上游 Python 图并通过结果身份校验。
+- 即使原版程序 `execution_status=success` / `runtime_readiness=remote_ready`，也只证明程序完成，不证明研究质量通过。
+- 方法论输出只是 CIS 的研究输入；CIS 保留证据门、风险门、Critical Dimension Gate、八维评分、Market Regime、四层交易、ETF/QDII纪律、组合门和最终中文结论。
 - `tradingagents-methodology.md` 是 CIS 的已验证稳定基线；上游变化不会未经审查直接覆盖它。
 
 ## 默认角色结构
@@ -66,7 +67,7 @@ Trader / Risk / Portfolio（按任务需要）
   ↓
 methodology_candidate
   ↓
-CIS Evidence → Risk → Score → Regime（按需）
+CIS Evidence → Risk → Critical Dimensions → Score → Regime（按需）
   ↓
 四层交易 / ETF / 组合门
   ↓
@@ -80,7 +81,7 @@ CIS Evidence → Risk → Score → Regime（按需）
 大股票池任务允许先使用 `quant-engine.md` 做横截面预筛：
 
 ```text
-Universe → Quant Top N → 本方法论深研 → CIS 最终质量门
+Point-in-time Universe → Quant Top N → 本方法论深研 → CIS 最终质量门
 ```
 
 Quant 不能替代 Bull/Bear、估值、风险或证据审计。
@@ -91,25 +92,27 @@ Quant 不能替代 Bull/Bear、估值、风险或证据审计。
 
 - 用户明确要求运行原版/官方程序/系统测试；
 - 需要对 ChatGPT-native 方法论做 A/B 验证；
-- 维护者需要验证上游新功能是否值得吸收。
+- 维护者需要验证上游新 Agent / Prompt / Graph / Tool / Risk 流程是否值得吸收。
 
 原版运行路径见 `tradingagents.md`，远程执行每次拉取上游当前 `main`。
 
-## 上游检查：7天 TTL
+## 上游检查：7天 TTL + 确定性执行器
 
-TradingAgents 上游不再使用定时 GitHub Actions 监控，也不在每次股票分析时重复访问。
+TradingAgents 上游不使用定时 GitHub Actions 监控，也不在每次股票分析时重复访问。
 
 状态文件：`runtime/tradingagents/upstream-status.json`。
+
+确定性执行器：`scripts/check_tradingagents_upstream.py`。
 
 执行规则：
 
 1. 读取 `last_checked_at` 与 `check_ttl_days`。
 2. 距离 `last_checked_at` **不足 7 天**：不访问 TradingAgents 上游，直接使用 CIS 已验证稳定基线。
 3. 距离 `last_checked_at` **达到或超过 7 天**：由下一次实际股票研究触发一次轻量上游 SHA 检查。
-4. 如果当前 `main` SHA 与 `observed_sha/reviewed_sha` 相同，只刷新检查时间；无需读取完整上游代码。
-5. 如果 SHA 发生变化，标记 `review_required`，并仅在需要时审查 Agent / Prompt / Graph / Tool / Risk 等方法论相关变化。
-6. 新逻辑未经审查不得覆盖本文件；当次研究继续使用稳定基线。
-7. 如果上游暂时不可访问，记录 `upstream_check=unavailable`，但不阻塞正常研究；下次超过 TTL 的研究可再次尝试。
+4. 当前 `main` SHA 与 `reviewed_sha` 相同：刷新 `last_checked_at` / `next_check_not_before`。
+5. SHA 发生变化：写入 `observed_sha` 并标记 `review_required`；当次继续使用稳定基线。
+6. 新逻辑未经审查不得覆盖本文件。
+7. 上游暂时不可访问：`upstream_check=unavailable`，不阻塞研究，也不把失败时间冒充成功检查时间。
 8. 用户明确要求“检查 TradingAgents 是否更新”时，可忽略 TTL 立即检查。
 
 ## 证据纪律
@@ -118,4 +121,4 @@ TradingAgents 上游不再使用定时 GitHub Actions 监控，也不在每次�
 - 代码仓库更新不代表行情、财报或新闻实时。
 - 历史日期研究禁止使用 `analysis_date` 之后的信息。
 - Bull/Bear 的任务是暴露不确定性，不是制造戏剧化争论。
-- 缺失数据不填 0、不猜测；按 CIS coverage gate 处理。
+- 缺失数据不填 0、不猜测；按 CIS coverage / Critical Dimension Gate 处理。
