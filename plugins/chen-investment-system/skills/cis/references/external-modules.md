@@ -2,14 +2,39 @@
 
 外部模块的“存在/可访问”和“本次任务已就绪”是两个独立状态。每次调用前都要检查，不得从 README、历史记录、聊天记忆或模块名称推断当前可用。
 
-## Anthropic Financial Services（首选专业 Skills 上游）
+## TradingAgents（默认通用研究核心）
 
-Anthropic `financial-services` 是 CIS 当前首选的专业金融 Skill 上游，用于补充机构化财务建模、估值、业绩研究、覆盖研究、竞争分析、论点跟踪与催化剂管理。
+TradingAgents 是 CIS 0.3.0 默认的股票研究与候选决策核心，用于基本面、技术、新闻、情绪、多空辩论、Trader、Risk Debate 与 Portfolio Manager 链路。
+
+- 上游：`https://github.com/TauricResearch/TradingAgents`
+- 当前核验（2026-08-09）：上游 README 标示 v0.3.1（2026-07）。
+- 许可证：Apache License 2.0；每次 vendoring、再分发或重大升级前重新核验。
+- 详细边界和运行状态见 `tradingagents.md`。
+- CIS 默认引用/调用上游，不复制其完整源码。
+
+### 运行优先级
+
+1. `installed_ready`：`tradingagents` Python 包可导入，模型/API/数据源就绪，实际 `.propagate()` 成功。
+2. `installed_limited`：包可运行但部分数据源、模型或市场能力缺失；仅使用可验证部分。
+3. `upstream_only`：只能读取上游方法/架构，当前环境无法执行；不得声称已运行。
+4. `unavailable`：上游不可读取且包不可用。
+5. `blocked`：任务必须依赖该核心，但继续会迫使系统猜测。
+
+### 决策边界
+
+- TradingAgents `Portfolio Manager` 输出统一适配为 `external_decision_candidate`。
+- 它不能覆盖 CIS 八维评分、coverage gate、证据门、四层交易框架、ETF/QDII纪律、组合数据门或个人投资规则。
+- 代码持续更新不代表行情/新闻实时；每次必须记录实际数据提供商与 `as_of`。
+- 历史研究必须防止 look-ahead leakage；任何超出 `analysis_date` 的证据不得进入当时决策。
+- TradingAgents 失败时，CIS 自写专家只作为 fallback adapters，不得伪造外部核心结果。
+
+## Anthropic Financial Services（首选专业金融 Skills 上游）
+
+Anthropic `financial-services` 是 CIS 当前首选的专业金融 Skill 上游，用于机构化财务建模、估值、业绩研究、覆盖研究、竞争分析、论点跟踪与催化剂管理。
 
 - 上游：`https://github.com/anthropics/financial-services`
 - 许可证：Apache License 2.0（每次重大升级或重新分发前重新核验）。
-- CIS 不把 Anthropic 的 Agent 当作最终投资决策者；只采用与当前子问题匹配的专业 Skill/方法。
-- CIS 总控、证据门、风险门、八维统一评分、四层交易框架、跨境 ETF/QDII 纪律、组合数据门和最终中文研究姿态继续由本仓库拥有。
+- Anthropic Skills 是专业子问题工具，不是最终投资决策者。
 
 ### 首选专业 Skill 映射
 
@@ -34,46 +59,31 @@ Anthropic `financial-services` 是 CIS 当前首选的专业金融 Skill 上游�
 
 ### 运行方式
 
-按以下优先级判断：
+1. `live_upstream`：可读取 Anthropic GitHub 当前上游目标 `SKILL.md`；首选。
+2. `vendored_snapshot`：存在带上游 commit/SHA 的已验证快照。
+3. `limited`：上游不可读取且无验证快照，只做有限分析。
+4. `blocked`：缺失专业方法或关键输入会迫使系统猜测。
 
-1. `live_upstream`：本次环境可读取 Anthropic GitHub 上游的对应 `SKILL.md`，先读取当前 `main` 版本再执行；这是首选方式，可避免本地快照漂移。
-2. `vendored_snapshot`：当前安装包中存在已同步并带上游 commit/SHA 的快照，可使用快照，但必须记录快照版本。
-3. `limited`：上游不可读取且无已验证快照；CIS 只能用自身证据纪律和基础方法完成有限分析，不得声称运行了 Anthropic Skill。
-4. `blocked`：缺失专业 Skill 或关键数据会迫使系统猜测时，停止该子模块并列出最小补充要求。
+### 与 TradingAgents 的协作
 
-### 调度边界
-
-- 用户调用“陈氏投资系统”时，Anthropic Skill 只能作为 CIS 子模块，不能绕过总控直接发布最终研究姿态。
-- 专业 Skill 的结论必须返回 CIS，经过证据审计、风险门、冲突处理和评分覆盖检查。
-- 不得把 Anthropic Skill 自带的数据源假设视为当前环境已连接；连接器必须在本次任务实际验证。
-- Anthropic Skill 中与 Claude/Cowork/Office JS/MCP 等特定运行时绑定的工具指令，只在当前环境真实具备对应能力时执行；否则保留金融方法，替换为当前可调用的等价工具或标记限制。
-- 不得为了“使用上游”而牺牲 CIS 的来源、截止时间、组合数据门和四层交易纪律。
+- TradingAgents 负责通用研究团队和候选决策。
+- Anthropic 负责 DCF/Comps/模型/财报等专业子问题。
+- Anthropic 输出作为证据回到 CIS，也可用于校正 TradingAgents 的通用判断。
+- 两者冲突时不得机械平均；按资料时点、口径、假设和方法解释。
 
 ## Buffett
 
-Buffett 是专业定性分析模块/外部依赖，用于商业模式、商业质量、护城河、管理层诚信与能力、资本配置、所有者收益、卖出纪律和长期所有者视角。
+Buffett 是可选的长期所有者定性模块，用于商业模式、商业质量、护城河、管理层、资本配置、所有者收益与卖出纪律。
 
 - 上游：`https://github.com/agi-now/buffett-skills`
 - 本仓库不包含上游源码。
-- 发布本版本时，上游未提供明确 LICENSE；安装或分发前必须重新核验。
-- 本项目与该上游无隶属、合作或背书关系。
+- 上游许可证状态在安装或分发前必须重新核验。
 
-### 调度边界
-
-- Buffett 只返回定性所有权判断，不拥有 CIS 最终结论。
-- 不得用护城河判断替代财务核验、估值、实时数据或组合风险。
-- CIS 必须把 Buffett 结果与财务、估值、业绩、宏观、组合和风险证据综合。
-- 出现冲突时，解释差异来自资料、预测、估值输入、方法还是时间跨度；不得机械平均。
-
-### 缺失时的降级
-
-- 未安装：`capability_status: unavailable`。
-- 有等价公司资料、但缺少专用 Buffett Skill：`runtime_readiness: limited`；CIS 可整理一般定性证据，但必须说明“未运行 Buffett 模块”。
-- 用户的问题必须依赖完整 Buffett 框架、且没有可替代资料：`runtime_readiness: blocked`；只列出最小补充要求。
-- Buffett 不可用不得阻止 CIS 总控、证据登记、风险门和其他可用模块运行。
+Buffett 不拥有 CIS 最终结论，也不替代 TradingAgents 的默认通用研究链或 Anthropic 的专业估值模型。
 
 ## 数据连接器
 
-- 插件安装不等于连接器已授权。
-- 只有本次任务实际执行并验证过的连接器才可标为可用。
-- 连接器不可用时，可使用用户资料或公开资料替代；必须记录 `as_of`、资料期间、来源等级和覆盖限制。
+- 插件/框架安装不等于连接器已授权。
+- 只有本次任务实际执行并验证过的数据源才可标为可用。
+- TradingAgents 自带/支持的数据 provider 也必须逐次记录可用性和 `as_of`。
+- 连接器不可用时，可使用用户资料或公开资料替代；必须降低置信度并记录覆盖限制。
