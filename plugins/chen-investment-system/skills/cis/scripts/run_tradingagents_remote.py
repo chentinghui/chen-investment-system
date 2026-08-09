@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
-"""Run TradingAgents in a remote GitHub Actions environment for CIS.
+"""Run original TradingAgents in GitHub Actions as a CIS candidate-only engine.
 
-Input:  runtime/tradingagents/request.json
-Output: runtime/tradingagents/result.json and result.md
-
-The default backend is local Ollama on the Actions runner. Cloud
-OpenAI-compatible endpoints such as NVIDIA NIM are supported by setting
-backend=openai_compatible, backend_url, model names, and the repository secret
-NVIDIA_API_KEY.
+Execution success is deliberately separated from evidence/research quality.
+A completed graph is not automatically an accepted CIS research result.
 """
 
 from __future__ import annotations
@@ -19,7 +14,6 @@ import traceback
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
-
 
 DEFAULT_BACKEND = "ollama"
 DEFAULT_OLLAMA_MODEL = "qwen3:4b-instruct"
@@ -82,8 +76,12 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
         if analyst not in selected_analysts:
             selected_analysts.append(analyst)
 
+    request_id = str(payload.get("request_id") or "").strip()
+    if not request_id:
+        request_id = f"{ticker}-{analysis_date}"
+
     return {
-        "request_id": str(payload.get("request_id") or f"{ticker}-{analysis_date}"),
+        "request_id": request_id,
         "ticker": ticker,
         "analysis_date": analysis_date,
         "backend": backend,
@@ -121,8 +119,10 @@ def render_markdown(result: dict[str, Any]) -> str:
     lines = [
         f"# TradingAgents Remote Result — {result.get('ticker', 'UNKNOWN')}",
         "",
-        f"- status: `{result.get('status')}`",
-        f"- runtime_readiness: `{result.get('runtime_readiness')}`",
+        f"- execution_status: `{result.get('execution_status')}`",
+        f"- legacy runtime_readiness: `{result.get('runtime_readiness')}`",
+        f"- evidence_audit_status: `{result.get('evidence_audit_status')}`",
+        f"- research_quality: `{result.get('research_quality')}`",
         f"- request_id: `{result.get('request_id')}`",
         f"- analysis_date: `{result.get('analysis_date')}`",
         f"- selected analysts: `{', '.join(result.get('selected_analysts') or [])}`",
@@ -132,7 +132,7 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"- quick model: `{result.get('quick_model')}`",
         "",
     ]
-    if result.get("status") != "success":
+    if result.get("execution_status") != "success":
         lines.extend(["## Error", "", f"```text\n{result.get('error', 'unknown error')}\n```", ""])
         return "\n".join(lines)
 
@@ -140,6 +140,8 @@ def render_markdown(result: dict[str, Any]) -> str:
         "## External Decision Candidate",
         "",
         str(result.get("external_decision_candidate") or "(empty)"),
+        "",
+        "> Execution completed, but evidence audit has not run. This candidate is unreviewed and cannot be treated as the final CIS action.",
         "",
     ])
 
@@ -165,7 +167,7 @@ def render_markdown(result: dict[str, Any]) -> str:
     lines.extend([
         "## CIS Contract",
         "",
-        "This output is **not** the final CIS action. It must still pass CIS evidence audit, risk gate, eight-dimension scoring, and any applicable four-layer/ETF/portfolio gates.",
+        "This output is **not** the final CIS action. It must still pass CIS evidence audit, risk review, eight-dimension scoring, critical-dimension gates, and any applicable four-layer/ETF/portfolio gates.",
         "",
     ])
     return "\n".join(lines)
@@ -183,13 +185,13 @@ def configure_llm(req: dict[str, Any], config: dict[str, Any]) -> None:
         config["backend_url"] = req["backend_url"]
     else:
         api_key = (
-            os.getenv("NVIDIA_API_KEY")
+            os.getenv("OPENAI_COMPATIBLE_API_KEY")
             or os.getenv("TRADINGAGENTS_API_KEY")
-            or os.getenv("OPENAI_COMPATIBLE_API_KEY")
+            or os.getenv("NVIDIA_API_KEY")
         )
         if not api_key:
             raise RuntimeError(
-                "NVIDIA_API_KEY (preferred) or TRADINGAGENTS_API_KEY is required for openai_compatible backend"
+                "OPENAI_COMPATIBLE_API_KEY, TRADINGAGENTS_API_KEY, or NVIDIA_API_KEY is required for openai_compatible backend"
             )
         os.environ["OPENAI_COMPATIBLE_API_KEY"] = api_key
         config["llm_provider"] = "openai_compatible"
@@ -217,7 +219,10 @@ def main() -> int:
     except Exception as exc:
         write_result(result_path, markdown_path, {
             "status": "invalid_input",
+            "execution_status": "invalid_input",
             "runtime_readiness": "blocked",
+            "evidence_audit_status": "not_run",
+            "research_quality": "rejected",
             "error": str(exc),
             "raw_request": raw,
         })
@@ -230,6 +235,8 @@ def main() -> int:
         "tradingagents_upstream_sha": os.getenv("TRADINGAGENTS_UPSTREAM_SHA", "unknown"),
         "started_at": datetime.now(timezone.utc).isoformat(),
         "cis_contract": "candidate_only_requires_CIS_quality_gates",
+        "evidence_audit_status": "not_run",
+        "research_quality": "unreviewed",
     }
 
     try:
@@ -238,7 +245,6 @@ def main() -> int:
 
         config = DEFAULT_CONFIG.copy()
         configure_llm(req, config)
-
         config["data_vendors"] = dict(config.get("data_vendors") or {})
         config["data_vendors"].update({
             "core_stock_apis": "yfinance",
@@ -257,6 +263,7 @@ def main() -> int:
         result = {
             **base_result,
             "status": "success",
+            "execution_status": "success",
             "runtime_readiness": "remote_ready",
             "finished_at": datetime.now(timezone.utc).isoformat(),
             "external_decision_candidate": jsonable(decision),
@@ -269,11 +276,13 @@ def main() -> int:
         result = {
             **base_result,
             "status": "error",
+            "execution_status": "error",
             "runtime_readiness": "remote_limited",
+            "research_quality": "rejected",
             "finished_at": datetime.now(timezone.utc).isoformat(),
             "error": f"{type(exc).__name__}: {exc}",
             "traceback_tail": traceback.format_exc()[-6000:],
-            "note": "Do not treat this as a TradingAgents decision; CIS must fall back or repair the remote runner.",
+            "note": "Execution failed. Do not treat this as a TradingAgents decision.",
         }
         write_result(result_path, markdown_path, result)
         return 1
