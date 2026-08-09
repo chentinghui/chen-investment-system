@@ -9,5 +9,6 @@
   "next_check_not_before": "2026-08-16T04:39:00Z",
   "reviewed_at": "2026-08-09T04:07:00Z",
   "review_note": "Latest reviewed upstream commit only changed README presentation/assets; no Agent, prompt, graph, tool, or risk-flow methodology change was detected.",
-  "policy": "use_time_check_with_7_day_ttl_stable_baseline"
+  "policy": "use_time_check_with_7_day_ttl_stable_baseline",
+  "executor": "plugins/chen-investment-system/skills/cis/scripts/check_tradingagents_upstream.py"
 }
