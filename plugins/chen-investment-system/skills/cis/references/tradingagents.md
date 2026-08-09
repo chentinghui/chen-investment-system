@@ -1,6 +1,6 @@
-# Original TradingAgents Runtime Adapter（CIS 0.4.0）
+# Original TradingAgents Runtime Adapter（CIS 0.4.1）
 
-本文件只定义**原版 TradingAgents Python** 的运行与验证规则。CIS 日常股票研究默认使用 `tradingagents-methodology.md` 的 ChatGPT-native 方法论，不要求运行本程序。
+本文件只定义**原版 TradingAgents Python** 的运行与验证规则。CIS 日常股票研究默认使用 `tradingagents-methodology.md` 的 ChatGPT-native 稳定方法论，不要求运行本程序。
 
 - 上游：`TauricResearch/TradingAgents`，默认分支 `main`。
 - 许可证：Apache License 2.0；重大升级/再分发前重新核验。
@@ -93,6 +93,13 @@ external_decision_candidate
 
 ## 上游更新
 
-`.github/workflows/cis-tradingagents-upstream-watch.yml` 定期检测上游 `main` SHA。
+日常研究不使用定时 GitHub Actions 监控 TradingAgents。上游检查由 `runtime/tradingagents/upstream-status.json` 控制，采用 **7 天 TTL**：
 
-SHA 变化只会把 `runtime/tradingagents/upstream-status.json` 标记为 `review_required`；不会自动覆盖 `tradingagents-methodology.md`。只有审查确认研究逻辑有价值后才人工/ChatGPT 更新方法论并记录 `reviewed_sha`。
+- `last_checked_at` 距当前不足 7 天：不访问上游；
+- 达到或超过 7 天：下一次股票研究轻量检查当前 `main` SHA；
+- SHA 未变：只刷新检查时间；
+- SHA 变化：标记 `review_required`，当次继续使用 CIS 已验证稳定方法论；
+- 上游不可访问：不阻塞研究，记录限制；
+- 用户明确要求检查更新：可忽略 TTL 立即检查。
+
+只有审查确认研究逻辑有价值后，才更新 `tradingagents-methodology.md` 和 `reviewed_sha`。禁止上游代码自动覆盖 CIS 方法论。
