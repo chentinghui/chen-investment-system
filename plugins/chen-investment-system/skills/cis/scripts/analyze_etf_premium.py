@@ -4,6 +4,7 @@ import argparse
 import json
 import math
 import statistics
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -12,13 +13,25 @@ MIN_HISTORY_OBSERVATIONS = 20
 
 
 def _positive(value: Any, label: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be a positive finite number")
     try:
         number = float(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"{label} must be a positive number") from exc
+        raise ValueError(f"{label} must be a positive finite number") from exc
     if not math.isfinite(number) or number <= 0:
-        raise ValueError(f"{label} must be a positive number")
+        raise ValueError(f"{label} must be a positive finite number")
     return number
+
+
+def _history_date(value: Any, label: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"{label}.date is required for historical premium observations")
+    try:
+        return date.fromisoformat(text).isoformat()
+    except ValueError as exc:
+        raise ValueError(f"{label}.date must be YYYY-MM-DD") from exc
 
 
 def _premium(price: Any, iopv: Any, label: str) -> float:
@@ -55,10 +68,11 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         "premium_change_pp": None,
         "history": {
             "valid_observations": 0,
+            "unique_dates": 0,
             "required_observations": MIN_HISTORY_OBSERVATIONS,
             "status": "insufficient_history",
         },
-        "note": "Quantitative premium context only; no trade action is generated.",
+        "note": "Quantitative premium context only; no trade action is generated. Historical readiness requires unique dated observations.",
     }
 
     entry = payload.get("entry")
@@ -74,15 +88,20 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("history must be an array")
 
     historical_premiums: list[float] = []
+    seen_dates: set[str] = set()
     for index, row in enumerate(history_rows):
         if not isinstance(row, dict):
             raise ValueError(f"history[{index}] must be an object")
-        historical_premiums.append(
-            _premium(row.get("price"), row.get("iopv"), f"history[{index}]")
-        )
+        label = f"history[{index}]"
+        observation_date = _history_date(row.get("date"), label)
+        if observation_date in seen_dates:
+            raise ValueError(f"duplicate historical premium date: {observation_date}")
+        seen_dates.add(observation_date)
+        historical_premiums.append(_premium(row.get("price"), row.get("iopv"), label))
 
+    result["history"]["valid_observations"] = len(historical_premiums)
+    result["history"]["unique_dates"] = len(seen_dates)
     if len(historical_premiums) < MIN_HISTORY_OBSERVATIONS:
-        result["history"]["valid_observations"] = len(historical_premiums)
         return result
 
     ordered = sorted(historical_premiums)
@@ -98,6 +117,7 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         regime = "within_historical_interquartile_range"
     result["history"] = {
         "valid_observations": len(ordered),
+        "unique_dates": len(seen_dates),
         "required_observations": MIN_HISTORY_OBSERVATIONS,
         "status": "ready",
         "minimum_premium_pct": _round_pct(ordered[0]),
