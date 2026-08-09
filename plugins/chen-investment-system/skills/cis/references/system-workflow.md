@@ -1,4 +1,13 @@
-# CIS v2 系统流程
+# CIS 0.2 系统流程
+
+## 0. Runtime Guard
+
+当用户明确调用“陈氏投资系统”“投资总控”“用我的投资系统分析”或等价表达时：
+
+1. 先读取当前 CIS `SKILL.md` 与必读 references。
+2. 若当前环境可访问 GitHub，优先核验 `chentinghui/chen-investment-system` 的 `main`；不得凭聊天记忆恢复旧流程或旧权重。
+3. 专业金融方法优先按 `anthropic-financial-services.md` 路由到 Anthropic `financial-services` 当前上游或已验证快照。
+4. 目标 Skill 未真实读取时，不得声称已经运行；按 `limited` / `blocked` 降级。
 
 ## 1. 任务受理
 
@@ -10,7 +19,7 @@
 
 ## 3. 模块预检与 Agent 预检
 
-区分“能力已安装”和“本次任务已就绪”。验证工作流存在、数据类别可用、关键来源可读取，并给出 `ready`、`limited` 或 `blocked`。
+区分“能力/上游存在”和“本次任务已就绪”。验证目标工作流或 Anthropic Skill 路径存在、数据类别可用、关键来源可读取，并给出 `ready`、`limited` 或 `blocked`。
 
 读取 `agent-registry.md`，选择一个主专家和最少数量的支持专家。调度专家前读取 `../../agents/` 中对应角色文件。外部模块不存在时按 `external-modules.md` 降级，不得伪造调用。
 
@@ -24,7 +33,7 @@
 
 若对象为跨境 ETF / QDII，按 `cross-border-etf-premium.md` 额外执行产品身份门和溢价数据门：核验精确基准，登记当前、建仓与历史溢价，以及申赎、额度、时差和流动性状态。
 
-## 6. 专家编排
+## 6. 专家编排与专业 Skill 调度
 
 按 `agent-orchestration.md` 执行：
 
@@ -32,8 +41,9 @@
 2. 支持专家只用于补足关键视角；
 3. Standard/Deep/Holding Review 默认加入风险经理与证据审计员；
 4. 可并行专家先独立分析，避免互相锚定；
-5. 专家返回统一 `agent-contract.md`；
-6. 冲突按数据、口径、期限、假设、方法逐项解释，不采用多数票。
+5. 需要 DCF、Comps、三表、模型审计、财报分析、首次覆盖、竞争分析、论点跟踪或催化剂管理时，按 `anthropic-financial-services.md` 选择最小匹配的 Anthropic Skill；
+6. 专家返回统一 `agent-contract.md`；
+7. 冲突按数据、口径、期限、假设、方法逐项解释，不采用多数票。
 
 ## 7. 质量循环
 
@@ -73,7 +83,7 @@
 
 持仓、权重、成本、基准、约束和资金需求完整时，组合与仓位经理评估组合后果；否则不得给精确仓位或再平衡比例。
 
-总控将专家/模块输出转换成统一格式，区分事实、计算、假设和判断，并解释关键冲突。
+总控将专家/Skill 输出转换成统一格式，区分事实、计算、假设和判断，并解释关键冲突。
 
 ## 11. 研究姿态
 
