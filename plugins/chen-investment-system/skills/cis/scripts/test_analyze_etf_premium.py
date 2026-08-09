@@ -35,6 +35,7 @@ class AnalyzeEtfPremiumTests(unittest.TestCase):
     def test_five_observations_are_not_enough_for_historical_regime(self) -> None:
         result = analyze(
             {
+                "as_of": "2026-06-30",
                 "current": {"price": 1.2, "iopv": 1.0},
                 "history": [
                     {"date": f"2026-06-{i + 1:02d}", "price": 1.15 + i / 100.0, "iopv": 1.0}
@@ -50,6 +51,7 @@ class AnalyzeEtfPremiumTests(unittest.TestCase):
     def test_requires_enough_history_before_regime_claim(self) -> None:
         result = analyze(
             {
+                "as_of": "2026-06-30",
                 "current": {"price": 1.2, "iopv": 1.0},
                 "history": [
                     {"date": "2026-06-01", "price": 1.18, "iopv": 1.0},
@@ -71,6 +73,7 @@ class AnalyzeEtfPremiumTests(unittest.TestCase):
     def test_history_requires_dates(self) -> None:
         with self.assertRaisesRegex(ValueError, "date is required"):
             analyze({
+                "as_of": "2026-06-30",
                 "current": {"price": 1.2, "iopv": 1.0},
                 "history": [{"price": 1.1, "iopv": 1.0}],
             })
@@ -78,10 +81,30 @@ class AnalyzeEtfPremiumTests(unittest.TestCase):
     def test_duplicate_history_dates_are_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "duplicate historical premium date"):
             analyze({
+                "as_of": "2026-06-30",
                 "current": {"price": 1.2, "iopv": 1.0},
                 "history": [
                     {"date": "2026-06-01", "price": 1.10, "iopv": 1.0},
                     {"date": "2026-06-01", "price": 1.11, "iopv": 1.0},
+                ],
+            })
+
+    def test_history_requires_as_of(self) -> None:
+        with self.assertRaisesRegex(ValueError, "as_of is required"):
+            analyze({
+                "current": {"price": 1.2, "iopv": 1.0},
+                "history": [
+                    {"date": "2026-06-01", "price": 1.10, "iopv": 1.0},
+                ],
+            })
+
+    def test_future_history_date_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "cannot be after as_of"):
+            analyze({
+                "as_of": "2026-06-30",
+                "current": {"price": 1.2, "iopv": 1.0},
+                "history": [
+                    {"date": "2026-07-01", "price": 1.10, "iopv": 1.0},
                 ],
             })
 

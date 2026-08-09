@@ -27,6 +27,42 @@ def parse_float(value: Any) -> float | None:
         return None
 
 
+def _is_missing(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and value.strip() == "")
+
+
+def _required_float(value: Any, label: str, row_index: int) -> float:
+    if _is_missing(value) or isinstance(value, bool):
+        raise ValueError(f"{label} must be a finite number at row {row_index}")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a finite number at row {row_index}") from exc
+    if not math.isfinite(number):
+        raise ValueError(f"{label} must be a finite number at row {row_index}")
+    return number
+
+
+def _optional_float(value: Any, label: str, row_index: int) -> float | None:
+    if _is_missing(value):
+        return None
+    return _required_float(value, label, row_index)
+
+
+def _positive_horizon(value: Any, row_index: int) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"horizon_trading_days must be a positive integer at row {row_index}")
+    if type(value) is int:
+        horizon = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        horizon = int(value.strip())
+    else:
+        raise ValueError(f"horizon_trading_days must be a positive integer at row {row_index}")
+    if horizon <= 0:
+        raise ValueError(f"horizon_trading_days must be a positive integer at row {row_index}")
+    return horizon
+
+
 def pearson(xs: list[float], ys: list[float]) -> float | None:
     if len(xs) < 2 or len(xs) != len(ys):
         return None
@@ -158,25 +194,57 @@ def _diagnose_horizon(items: list[dict[str, Any]]) -> dict[str, Any]:
 
 def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     parsed: list[dict[str, Any]] = []
-    for row in rows:
-        score = parse_float(row.get("cis_score"))
-        realized = parse_float(row.get("realized_return"))
-        benchmark = parse_float(row.get("benchmark_return"))
-        if score is None or realized is None:
+    seen_outcomes: set[tuple[str, int]] = set()
+    excluded_missing_score_count = 0
+
+    for row_index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"evaluation row {row_index} must be an object")
+
+        realized = _required_float(row.get("realized_return"), "realized_return", row_index)
+        if realized < -1:
+            raise ValueError(f"realized_return cannot be below -100% at row {row_index}")
+
+        benchmark = _optional_float(row.get("benchmark_return"), "benchmark_return", row_index)
+        if benchmark is not None and benchmark < -1:
+            raise ValueError(f"benchmark_return cannot be below -100% at row {row_index}")
+
+        raw_horizon = row.get("horizon_trading_days", row.get("horizon_days"))
+        horizon = _positive_horizon(raw_horizon, row_index)
+        research_id = str(row.get("research_id") or "").strip() or None
+        if research_id:
+            duplicate_key = (research_id, horizon)
+            if duplicate_key in seen_outcomes:
+                raise ValueError(
+                    f"duplicate evaluation outcome for research_id={research_id}, horizon={horizon}"
+                )
+            seen_outcomes.add(duplicate_key)
+
+        if _is_missing(row.get("cis_score")):
+            excluded_missing_score_count += 1
             continue
+        score = _required_float(row.get("cis_score"), "cis_score", row_index)
+        if not 0 <= score <= 100:
+            raise ValueError(f"cis_score must be between 0 and 100 at row {row_index}")
+
+        dimensions: dict[str, float | None] = {}
+        for name in DIMENSIONS:
+            raw_dimension = row.get(name) if name in row else row.get(f"dimension_{name}")
+            value = _optional_float(raw_dimension, name, row_index)
+            if value is not None and not 0 <= value <= 100:
+                raise ValueError(f"{name} must be between 0 and 100 at row {row_index}")
+            dimensions[name] = value
+
         parsed.append({
-            "research_id": str(row.get("research_id") or "").strip() or None,
+            "research_id": research_id,
             "ticker": str(row.get("ticker") or "").strip().upper() or None,
             "cis_score": score,
             "realized_return": realized,
             "excess_return": realized - benchmark if benchmark is not None else None,
-            "horizon": str(row.get("horizon_trading_days", row.get("horizon_days", "unknown"))),
+            "horizon": str(horizon),
             "regime": str(row.get("regime") or "unknown"),
             "sector": str(row.get("sector") or "unknown"),
-            "dimensions": {
-                name: parse_float(row.get(name) if name in row else row.get(f"dimension_{name}"))
-                for name in DIMENSIONS
-            },
+            "dimensions": dimensions,
         })
 
     by_horizon: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -202,6 +270,8 @@ def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     return {
         "status": "optional_calibration_report",
+        "input_row_count": len(rows),
+        "excluded_missing_score_count": excluded_missing_score_count,
         "sample_count": len(parsed),
         "outcome_count": len(parsed),
         "unique_research_count": independent_count,
@@ -216,7 +286,8 @@ def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "warning": (
             "Optional calibration only. Correlations are never pooled across different horizons; "
             "sample thresholds use unique research_id when available. Multiple horizons from one research "
-            "are correlated outcomes, not independent experiments. Never auto-rewrite CIS production weights."
+            "are correlated outcomes, not independent experiments. Missing scores are reported as exclusions; "
+            "malformed outcome data is rejected, never silently dropped. Never auto-rewrite CIS production weights."
         ),
     }
 
@@ -254,7 +325,11 @@ def main() -> int:
     else:
         with open(args.input_csv, newline="", encoding="utf-8-sig") as handle:
             rows = list(csv.DictReader(handle))
-    text = json.dumps(evaluate(rows), ensure_ascii=False, indent=2)
+    try:
+        result = evaluate(rows)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    text = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:
         Path(args.output).write_text(text + "\n", encoding="utf-8")
     else:

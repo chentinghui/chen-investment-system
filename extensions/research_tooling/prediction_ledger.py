@@ -74,6 +74,12 @@ def _finite_float(value: Any, label: str) -> float:
     return number
 
 
+def _strict_positive_int(value: Any, label: str) -> int:
+    if type(value) is not int or value <= 0:
+        raise ValueError(f"{label} must be a positive integer")
+    return value
+
+
 def _reject_unknown(payload: dict[str, Any], allowed: set[str], label: str) -> None:
     unknown = sorted(set(payload) - allowed)
     if unknown:
@@ -87,17 +93,10 @@ def _normalize_horizons(payload: dict[str, Any]) -> list[int]:
         raw = [legacy] if legacy not in (None, "") else list(DEFAULT_HORIZONS_TRADING_DAYS)
     if not isinstance(raw, (list, tuple)):
         raise ValueError("horizons_trading_days must be an array")
-    horizons: list[int] = []
-    for value in raw:
-        if isinstance(value, bool):
-            raise ValueError("horizons_trading_days must contain positive integers")
-        try:
-            horizon = int(value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("horizons_trading_days must contain positive integers") from exc
-        if horizon <= 0:
-            raise ValueError("horizons_trading_days must contain positive integers")
-        horizons.append(horizon)
+    horizons = [
+        _strict_positive_int(value, "horizons_trading_days values")
+        for value in raw
+    ]
     normalized = sorted(set(horizons))
     if not normalized:
         raise ValueError("at least one evaluation horizon is required")
@@ -149,6 +148,8 @@ def outcome_keys(events: list[dict[str, Any]]) -> set[tuple[str, int]]:
             if len(horizons) == 1:
                 horizon = horizons[0]
         if horizon not in (None, ""):
+            # Compatibility for already-stored historical ledger events. New writes
+            # are strict JSON integers and are validated before reaching this path.
             keys.add((research_id, int(horizon)))
     return keys
 
@@ -205,11 +206,7 @@ def validate_outcome(payload: dict[str, Any], prediction: dict[str, Any] | None 
             horizon = horizons[0]
     if horizon in (None, ""):
         raise ValueError("outcome missing required field: horizon_trading_days")
-    if isinstance(horizon, bool):
-        raise ValueError("horizon_trading_days must be positive")
-    horizon = int(horizon)
-    if horizon <= 0:
-        raise ValueError("horizon_trading_days must be positive")
+    horizon = _strict_positive_int(horizon, "horizon_trading_days")
     if prediction and horizon not in _normalize_horizons(prediction):
         raise ValueError(f"horizon {horizon} was not registered in prediction")
 
