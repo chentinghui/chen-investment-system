@@ -1,4 +1,4 @@
-# ChatGPT-native TradingAgents Methodology（CIS 0.4.2）
+# ChatGPT-native TradingAgents Methodology（CIS 0.4.3）
 
 本文件定义 CIS 的默认股票研究方法。它吸收 `TauricResearch/TradingAgents` 的多角色结构，但默认由当前 ChatGPT 会话直接执行，不要求运行 TradingAgents Python，也不要求外部 LLM API。
 
@@ -8,7 +8,7 @@
 - ChatGPT 直接承担多角色研究编排，并使用本次可核验的公开数据、连接器数据和用户资料。
 - 不声称“运行了原版 TradingAgents”，除非本次确实执行上游 Python 图并通过结果身份校验。
 - 即使原版程序 `execution_status=success` / `runtime_readiness=remote_ready`，也只证明程序完成，不证明研究质量通过。
-- 方法论输出只是 CIS 的研究输入；CIS 保留证据门、风险门、Critical Dimension Gate、八维评分、Market Regime、四层交易、ETF/QDII纪律、组合门和最终中文结论。
+- 方法论输出只是 CIS 的研究输入；CIS 保留证据门、风险门、Critical Dimension Gate、八维评分、Market Regime、Tactical Price/RR Gate、四层交易、ETF/QDII纪律、组合门和最终中文结论。
 - `tradingagents-methodology.md` 是 CIS 的已验证稳定基线；上游变化不会未经审查直接覆盖它。
 
 ## 默认角色结构
@@ -41,7 +41,7 @@
 - **No fact creation by manager**：Research Manager 只能裁决已登记证据、计算和假设，禁止引入未核验新事实。
 - **Risk independence**：Risk 必须至少提出一个不依赖 Bull/Bear 主论点的尾部风险或失效机制。
 - **Conflict preservation**：关键冲突无法解决时保留冲突并降低 confidence，不通过多数票消除。
-- **As-of discipline**：所有角色共享同一 `analysis_date/as_of`，历史研究禁止未来信息泄漏。
+- **As-of discipline**：所有角色共享同一 `analysis_date/as_of`，历史研究禁止未来信息泄漏；短线行情/技术/催化剂还必须满足 CIS Evidence Freshness Guard。
 
 ## 研究模式
 
@@ -55,7 +55,7 @@
 ```text
 研究问题 / as_of
   ↓
-可核验证据采集
+可核验证据采集 + 新鲜度检查
   ↓
 Market + Fundamentals + News (+ Sentiment 按需)
   ↓
@@ -67,9 +67,9 @@ Trader / Risk / Portfolio（按任务需要）
   ↓
 methodology_candidate
   ↓
-CIS Evidence → Risk → Critical Dimensions → Score → Regime（按需）
+CIS Evidence → Risk → Critical Dimensions / Context Checks → Score → Regime（按需）
   ↓
-四层交易 / ETF / 组合门
+Tactical Price/RR Gate（短线按需）→ 四层交易 / ETF / 组合门
   ↓
 最终中文研究姿态
 ```
@@ -120,5 +120,6 @@ TradingAgents 上游不使用定时 GitHub Actions 监控，也不在每次股�
 - 模型角色不是证据来源；每个事实仍要落到真实数据源。
 - 代码仓库更新不代表行情、财报或新闻实时。
 - 历史日期研究禁止使用 `analysis_date` 之后的信息。
+- 短线分析中 `last_close`、盘前、盘后和 regular live 报价必须明确区分，关键新闻/催化剂必须检查当前最新公开信息。
 - Bull/Bear 的任务是暴露不确定性，不是制造戏剧化争论。
 - 缺失数据不填 0、不猜测；按 CIS coverage / Critical Dimension Gate 处理。
