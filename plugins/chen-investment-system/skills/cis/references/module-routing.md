@@ -5,7 +5,7 @@
 CIS 是唯一用户入口和最终质量控制层，但**不是所有工具都属于 Core**。
 
 - 单股票/上市公司研究：默认只走 CIS Core；
-- 短线/具体买点：Core 内追加 Price/Session Guard + Tactical R/R Gate；
+- 短线/具体买点：Core 内追加 Exchange-aware Price/Session Guard + Quote Freshness + Tactical R/R Gate；
 - 大股票池筛选：按需调用 `extensions/research_tooling/quant_factor_engine.py`；
 - 专业估值/财报/模型：按需调用 Anthropic Financial Services；
 - 当前市场环境显著影响交易计划：加 Market Regime；
@@ -22,7 +22,7 @@ CIS 是唯一用户入口和最终质量控制层，但**不是所有工具都�
 | 多空观点 | Bull/Bear 独立反证 | Research Manager | 冲突保留与裁决 |
 | 价值区间/DCF/Comps | ChatGPT-native 上下文 | Anthropic DCF/Comps | valuation + Evidence |
 | 财报前后 | ChatGPT-native News/Fundamentals | Anthropic Earnings | catalyst/valuation 更新 |
-| 短线买入/做差价 | ChatGPT-native Methodology + Price/Session Guard + Tactical R/R Gate | Regime（按需） | Tactical Context Checks + 四层交易 |
+| 短线买入/做差价 | ChatGPT-native Methodology + Exchange/Session + Freshness + Tactical R/R | Regime（按需） | Tactical Context Checks + 四层交易 |
 | 买入/卖出/持有 | ChatGPT-native Methodology | Regime（按需） | Critical Dimensions + 四层交易 + Portfolio Gate |
 | 大股票池 Top N | CIS 受理 | **Quant Extension** | 候选再回到 CIS Core 深研 |
 | 量化规则是否有效 | CIS 受理 | **Backtest Extension** | 不自动改生产规则 |
@@ -43,7 +43,7 @@ earnings  → fundamentals + catalyst_macro + risk_resilience
 
 其中 tactical 的 `price_context` 与 `catalyst_event_review` 是“检查是否完成”的布尔门；没有正面催化剂可以是合法研究结论，但未检查不能进入 `decision_grade`。
 
-关键维度或必需上下文检查缺失时，即使 coverage >= 85%，仍只能 `provisional`。
+关键维度或必需上下文检查缺失时，即使 coverage >= 85%，仍只能 `provisional`。同时，`decision_grade` 只代表 CIS Research Grade；Tactical Setup Readiness 必须另行报告，不能互相覆盖。
 
 ## Tactical Price / R/R 路由
 
@@ -53,9 +53,36 @@ earnings  → fundamentals + catalyst_macro + risk_resilience
 scripts/tactical_setup_gate.py
 ```
 
-输入至少包含带时区 `analysis_timestamp` / `quote_timestamp`、`market_session`、`price_type`、`current_price`、Entry Zone、Stop、Target 1；Chase Limit 和 Target 2 按任务需要。
+输入至少包含：
 
-`last_close` 不得在休市、盘前或盘后语境中冒充实时价。Quality Score 与 Tactical Setup 必须分开报告；好公司在赔率差或超过 Chase Limit 时仍可得到 `wait_for_entry` / `blocked_do_not_chase`。
+```text
+analysis_timestamp
+quote_timestamp
+exchange: XNAS | XNYS
+market_session（可提供，但必须与代码推导一致）
+price_type
+current_price
+quote_max_age_seconds（活跃时段）
+quote_session_date（closed/last_close）
+Entry Zone
+Stop + stop_type
+Target 1
+```
+
+Chase Limit 和 Target 2 按任务需要。非 `hard_price` Stop 必须显式提供 `stop_confirmation_met`。
+
+路由语义：
+
+- 活跃时段 stale quote → Price Context fail；
+- 周末/休市日不能伪装成 `regular`；
+- 旧 last close 不是最近已完成 session → fail；
+- Stop 已失效 → `invalidated_reprice_required`；
+- Target 1 已实现/越过 → `setup_expired_reprice_required`；
+- 确认型 Stop 已穿越但未确认 → `blocked_pending_stop_confirmation`；
+- 超过 Chase Limit → `blocked_do_not_chase`；
+- 尚未进入 Entry Zone → `wait_for_entry`。
+
+Quality Score 与 Tactical Setup 必须分开报告。
 
 ## Optional Research Tooling
 
@@ -77,7 +104,14 @@ extensions/research_tooling/
 
 Regime 只修正环境、安全边际和交易节奏，不直接覆盖公司基本面，也不产生机械买卖信号。
 
-每个参与分类的信号必须提供独立 `signal_as_of`；缺失或 stale 时不能把整体 `as_of` 当作所有数据都新鲜。
+必须选择：
+
+```text
+us_broad_v1  → SPY + S&P500 breadth
+us_nasdaq_v1 → QQQ + Nasdaq-100 breadth
+```
+
+每个参与分类的信号提供独立 `signal_as_of`。missing/stale 信号先从本次分类排除，再用剩余 fresh signals 重新计算 coverage；fresh coverage 不足才输出 `insufficient`。未来日期仍直接拒绝，不能通过排除绕过前视偏差。
 
 ## TradingAgents 上游检查
 
@@ -94,7 +128,7 @@ Regime 只修正环境、安全边际和交易节奏，不直接覆盖公司基�
 ## 防重叠规则
 
 - ChatGPT-native Analyst 已覆盖的职责不重复跑同职责 fallback Agent；
-- Tactical Gate 只负责价格语义与赔率几何，不重复基本面/技术研究；
+- Tactical Gate 只负责价格语义、session/freshness、setup 生命周期和赔率几何，不重复基本面/技术研究；
 - Quant 只筛选，不重复做最终公司研究；
 - Anthropic 只负责专业子问题，不拥有最终动作权；
 - Market Regime 不重复技术分析，只提供环境层；
