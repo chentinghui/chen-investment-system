@@ -28,7 +28,22 @@ A/B 级优先；C 级用于补充或市场背景；D 级只能形成线索，不
 
 对 `decision_context=tactical`，若价格/成交/技术关键证据的数据截止时间不清楚，或关键催化剂检查没有完成，Evidence Audit 不得 `pass`。
 
-`last_close` 只能称为“最近收盘参考价”，不能在休市、盘前或盘后语境中冒充实时 `current_price`。价格语义由 `scripts/tactical_setup_gate.py` 的 Price/Session Guard 校验。
+### Tactical quote freshness
+
+短线“当前价”还必须满足：
+
+```text
+exchange
+analysis_timestamp
+quote_timestamp
+market_session
+price_type
+quote freshness policy
+```
+
+`market_session` 必须由 exchange + timestamp 的交易时段基线验证，不能只相信调用者字符串。活跃时段报价必须有显式允许的最大 age；超过该 age 时 Price Context 直接失败。`last_close` 只能称为“最近收盘参考价”，且 `quote_session_date` 必须对应最近已完成交易日。
+
+`scripts/tactical_setup_gate.py` 负责确定性语义检查。特殊临时休市、交易所异常或供应商延迟仍需 Evidence Layer 依据交易所/数据商资料核验；代码日历不能冒充官方实时交易日历。
 
 ## Fail-Closed Audit
 
@@ -39,6 +54,7 @@ Evidence Audit 默认状态不是 `pass`，而是 `unverified`。只有实际检
 - 关键事实没有可追溯来源；
 - 关键市场/财务数据截止时间不明；
 - 短线关键行情、技术或催化剂证据的新鲜度未确认；
+- 活跃时段报价超过声明 freshness policy，或 session/price_type 与交易所时间冲突；
 - 历史研究存在未来信息泄漏；
 - 冲突证据尚未解释；
 - 关键估值输入只是模型猜测；
