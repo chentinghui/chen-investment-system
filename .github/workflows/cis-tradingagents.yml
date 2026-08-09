@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: cis-tradingagents-remote-v2
+  group: cis-tradingagents-remote-v3
   cancel-in-progress: true
 
 jobs:
