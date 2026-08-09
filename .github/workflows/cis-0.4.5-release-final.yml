@@ -1,0 +1,110 @@
+name: CIS 0.4.5 Final One-shot Release
+
+on:
+  push:
+    branches:
+      - cis-0.4.5-hardening
+    paths:
+      - ".github/workflows/cis-0.4.5-release-final.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cis-0.4.5-final-release
+  cancel-in-progress: false
+
+jobs:
+  validate-release-cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v6
+        with:
+          ref: cis-0.4.5-hardening
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate CIS contracts
+        run: python plugins/chen-investment-system/skills/cis/scripts/validate_cis.py
+
+      - name: Compile CIS Core and Extensions
+        run: |
+          python -m py_compile \
+            plugins/chen-investment-system/skills/cis/scripts/score_cis.py \
+            plugins/chen-investment-system/skills/cis/scripts/analyze_etf_premium.py \
+            plugins/chen-investment-system/skills/cis/scripts/classify_market_regime.py \
+            plugins/chen-investment-system/skills/cis/scripts/tactical_setup_gate.py \
+            plugins/chen-investment-system/skills/cis/scripts/check_tradingagents_upstream.py \
+            plugins/chen-investment-system/skills/cis/scripts/run_tradingagents.py \
+            plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py \
+            plugins/chen-investment-system/skills/cis/scripts/validate_cis.py \
+            extensions/research_tooling/quant_factor_engine.py \
+            extensions/research_tooling/backtest_factor_strategy.py \
+            extensions/research_tooling/prediction_ledger.py \
+            extensions/research_tooling/record_cis_research.py \
+            extensions/research_tooling/settle_due_predictions.py \
+            extensions/research_tooling/evaluate_cis_predictions.py
+
+      - name: Run CIS Core unit tests (expected 59)
+        run: |
+          set -euo pipefail
+          python -m unittest discover \
+            -s plugins/chen-investment-system/skills/cis/scripts \
+            -p "test_*.py" \
+            -v 2>&1 | tee /tmp/cis-core-tests.log
+          grep -q "Ran 59 tests" /tmp/cis-core-tests.log
+          grep -q "^OK$" /tmp/cis-core-tests.log
+
+      - name: Run Optional Research Tooling unit tests (expected 22)
+        run: |
+          set -euo pipefail
+          python -m unittest discover \
+            -s extensions/research_tooling \
+            -p "test_*.py" \
+            -v 2>&1 | tee /tmp/cis-extension-tests.log
+          grep -q "Ran 22 tests" /tmp/cis-extension-tests.log
+          grep -q "^OK$" /tmp/cis-extension-tests.log
+
+      - name: Publish validated release commit and remove one-shot workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          TESTED_SHA=$(git rev-parse HEAD)
+          mkdir -p runtime
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          payload = {
+              "cis_version": "0.4.5",
+              "validation_status": "success",
+              "tested_commit_sha": os.environ["TESTED_SHA"],
+              "core_tests": 59,
+              "extension_tests": 22,
+              "total_tests": 81,
+              "validated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+              "release_note": "Contract & Security Hardening; final one-shot release validation passed before cleanup-only release commit.",
+          }
+          Path("runtime/cis-release-status.json").write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          git rm -f .github/workflows/cis-0.4.5-release-once.yml .github/workflows/cis-0.4.5-release-final.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/cis-release-status.json
+          git commit -m "release: publish CIS 0.4.5 validated status"
+          git fetch origin main cis-0.4.5-hardening
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo "main has diverged; refusing non-fast-forward release" >&2
+            exit 1
+          fi
+          git push origin HEAD:cis-0.4.5-hardening
+          git push origin HEAD:main
+        env:
+          TESTED_SHA: ${{ github.sha }}
