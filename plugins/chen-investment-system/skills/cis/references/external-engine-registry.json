@@ -2,6 +2,7 @@
   "schema_version": "cis.external-engines.v1",
   "cis_version": "0.4.5",
   "controller": "cis_control_layer",
+  "readiness_probe": "scripts/check_external_engines.py",
   "principles": {
     "single_final_authority": "cis_control_layer",
     "external_decision_authority": "none",
