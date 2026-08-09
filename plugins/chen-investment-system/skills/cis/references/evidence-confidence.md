@@ -44,7 +44,9 @@ quote_session_date（closed / last_close）
 
 `market_session` 必须由时间戳的 US-equity session baseline 验证，不能只相信调用者字符串。活跃时段报价必须有显式允许的最大 `quote_max_age_seconds`；超过该 age 时 Price Context 直接失败。
 
-0.4.5 进一步要求：**active quote 的 `quote_timestamp` 本身必须属于与分析一致的 session**。例如 09:00 ET 的 premarket 报价，即使只过去35分钟，也不能包装成 09:35 ET regular session 的 `live` 报价。`last_close` 只能称为“最近收盘参考价”，且 `quote_session_date` 必须对应最近已完成交易日，`quote_timestamp` 日期也必须与该 session 一致。
+0.4.5 进一步要求：**active quote 的 `quote_timestamp` 本身必须属于与分析一致的 session**。例如 09:00 ET 的 premarket 报价，即使只过去35分钟，也不能包装成 09:35 ET regular session 的 `live` 报价。
+
+`last_close` 只能称为“最近收盘参考价”：`quote_session_date` 必须对应最近已完成交易日，`quote_timestamp` 日期必须与该 session 一致，且其美东时间必须位于该交易日的 regular close 时点或之后。不能用同一天盘前/盘中的时间戳冒充正式收盘价；提前收盘日按系统的提前收盘基线判断。
 
 `scripts/tactical_setup_gate.py` 负责确定性语义检查。当前 XNAS/XNYS 使用 US-equity common session baseline；特殊临时休市、交易所异常、不同 venue 的细节或供应商延迟仍需 Evidence Layer 依据交易所/数据商资料核验，代码日历不能冒充官方实时交易日历。
 
@@ -66,6 +68,7 @@ audit_status = unverified | pass | unresolved | fail
 - 关键市场/财务数据截止时间不明；
 - 短线关键行情、技术或催化剂证据的新鲜度未确认；
 - active quote 超过声明 freshness policy，或 quote observation session / price_type 与分析时段冲突；
+- `last_close` 的 session/date/收盘时点语义不一致；
 - 历史研究存在未来信息泄漏；
 - 冲突证据尚未解释；
 - 关键估值输入只是模型猜测；
