@@ -4,10 +4,9 @@
 Input:  runtime/tradingagents/request.json
 Output: runtime/tradingagents/result.json and result.md
 
-The runner intentionally treats TradingAgents as an external research engine.
-Its Portfolio Manager output is only an external_decision_candidate; CIS still
-owns evidence audit, scoring, four-layer trading rules, ETF/QDII rules, and the
-final Chinese research posture.
+The default backend is local Ollama on the Actions runner, so the bridge does
+not require a third-party LLM API key. Cloud OpenAI-compatible endpoints remain
+supported as an optional quality upgrade.
 """
 
 from __future__ import annotations
@@ -21,9 +20,9 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_DEEP_MODEL = "openai/gpt-4.1"
-DEFAULT_QUICK_MODEL = "openai/gpt-4.1-mini"
-GITHUB_MODELS_BASE_URL = "https://models.github.ai/inference"
+DEFAULT_BACKEND = "ollama"
+DEFAULT_OLLAMA_MODEL = "qwen3:4b"
+OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1"
 
 
 def jsonable(value: Any) -> Any:
@@ -46,23 +45,35 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
     if not ticker:
         raise ValueError("ticker is required")
 
-    analysis_date = str(payload.get("analysis_date", "")).strip()
-    if not analysis_date:
-        analysis_date = date.today().isoformat()
+    analysis_date = str(payload.get("analysis_date", "")).strip() or date.today().isoformat()
     date.fromisoformat(analysis_date)
 
-    request_id = str(payload.get("request_id") or f"{ticker}-{analysis_date}")
-    deep_model = str(payload.get("deep_model") or DEFAULT_DEEP_MODEL)
-    quick_model = str(payload.get("quick_model") or DEFAULT_QUICK_MODEL)
+    backend = str(payload.get("backend") or DEFAULT_BACKEND).strip().lower()
+    if backend not in {"ollama", "openai_compatible"}:
+        raise ValueError("backend must be 'ollama' or 'openai_compatible'")
+
+    if backend == "ollama":
+        deep_model = str(payload.get("deep_model") or DEFAULT_OLLAMA_MODEL)
+        quick_model = str(payload.get("quick_model") or deep_model)
+        backend_url = str(payload.get("backend_url") or OLLAMA_BASE_URL)
+    else:
+        deep_model = str(payload.get("deep_model") or "")
+        quick_model = str(payload.get("quick_model") or deep_model)
+        backend_url = str(payload.get("backend_url") or os.getenv("TRADINGAGENTS_LLM_BACKEND_URL") or "")
+        if not deep_model or not backend_url:
+            raise ValueError("openai_compatible backend requires deep_model and backend_url")
+
     debate_rounds = int(payload.get("max_debate_rounds", 1))
     risk_rounds = int(payload.get("max_risk_rounds", 1))
     if debate_rounds < 0 or risk_rounds < 0:
         raise ValueError("debate rounds must be >= 0")
 
     return {
-        "request_id": request_id,
+        "request_id": str(payload.get("request_id") or f"{ticker}-{analysis_date}"),
         "ticker": ticker,
         "analysis_date": analysis_date,
+        "backend": backend,
+        "backend_url": backend_url,
         "deep_model": deep_model,
         "quick_model": quick_model,
         "max_debate_rounds": debate_rounds,
@@ -100,7 +111,7 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"- request_id: `{result.get('request_id')}`",
         f"- analysis_date: `{result.get('analysis_date')}`",
         f"- TradingAgents upstream SHA: `{result.get('tradingagents_upstream_sha')}`",
-        f"- LLM backend: GitHub Models / OpenAI-compatible",
+        f"- LLM backend: `{result.get('backend')}`",
         f"- deep model: `{result.get('deep_model')}`",
         f"- quick model: `{result.get('quick_model')}`",
         "",
@@ -109,8 +120,12 @@ def render_markdown(result: dict[str, Any]) -> str:
         lines.extend(["## Error", "", f"```text\n{result.get('error', 'unknown error')}\n```", ""])
         return "\n".join(lines)
 
-    decision = result.get("external_decision_candidate")
-    lines.extend(["## External Decision Candidate", "", str(decision or "(empty)"), ""])
+    lines.extend([
+        "## External Decision Candidate",
+        "",
+        str(result.get("external_decision_candidate") or "(empty)"),
+        "",
+    ])
 
     titles = [
         ("market_report", "Technical / Market Analyst"),
@@ -128,9 +143,9 @@ def render_markdown(result: dict[str, Any]) -> str:
     ]
     reports = result.get("reports") or {}
     for key, title in titles:
-        text = reports.get(key)
-        if text:
-            lines.extend([f"## {title}", "", str(text), ""])
+        if reports.get(key):
+            lines.extend([f"## {title}", "", str(reports[key]), ""])
+
     lines.extend([
         "## CIS Contract",
         "",
@@ -146,14 +161,33 @@ def write_result(path_json: Path, path_md: Path, payload: dict[str, Any]) -> Non
     path_md.write_text(render_markdown(payload), encoding="utf-8")
 
 
+def configure_llm(req: dict[str, Any], config: dict[str, Any]) -> None:
+    if req["backend"] == "ollama":
+        config["llm_provider"] = "ollama"
+        config["backend_url"] = req["backend_url"]
+    else:
+        api_key = os.getenv("TRADINGAGENTS_API_KEY") or os.getenv("OPENAI_COMPATIBLE_API_KEY")
+        if not api_key:
+            raise RuntimeError("TRADINGAGENTS_API_KEY is required for openai_compatible backend")
+        os.environ["OPENAI_COMPATIBLE_API_KEY"] = api_key
+        config["llm_provider"] = "openai_compatible"
+        config["backend_url"] = req["backend_url"]
+
+    config["deep_think_llm"] = req["deep_model"]
+    config["quick_think_llm"] = req["quick_model"]
+    config["max_debate_rounds"] = req["max_debate_rounds"]
+    config["max_risk_discuss_rounds"] = req["max_risk_rounds"]
+    config["output_language"] = req["output_language"]
+    config["llm_max_retries"] = 2
+    config["checkpoint_enabled"] = False
+
+
 def main() -> int:
     if len(sys.argv) != 4:
         print("usage: run_tradingagents_remote.py REQUEST_JSON RESULT_JSON RESULT_MD", file=sys.stderr)
         return 2
 
-    request_path = Path(sys.argv[1])
-    result_path = Path(sys.argv[2])
-    markdown_path = Path(sys.argv[3])
+    request_path, result_path, markdown_path = map(Path, sys.argv[1:4])
     raw = json.loads(request_path.read_text(encoding="utf-8"))
 
     try:
@@ -167,25 +201,10 @@ def main() -> int:
         })
         return 2
 
-    token = os.getenv("GITHUB_MODELS_TOKEN") or os.getenv("GITHUB_TOKEN")
-    if not token:
-        write_result(result_path, markdown_path, {
-            **req,
-            "status": "error",
-            "runtime_readiness": "remote_limited",
-            "error": "GitHub Models token is unavailable in the runner.",
-        })
-        return 3
-
-    # TradingAgents generic OpenAI-compatible provider reads this variable.
-    os.environ["OPENAI_COMPATIBLE_API_KEY"] = token
-
     base_result = {
         **req,
         "engine": "TradingAgents",
         "runner": "github_actions",
-        "llm_provider": "openai_compatible",
-        "llm_backend_url": GITHUB_MODELS_BASE_URL,
         "tradingagents_upstream_sha": os.getenv("TRADINGAGENTS_UPSTREAM_SHA", "unknown"),
         "started_at": datetime.now(timezone.utc).isoformat(),
         "cis_contract": "candidate_only_requires_CIS_quality_gates",
@@ -196,19 +215,10 @@ def main() -> int:
         from tradingagents.graph.trading_graph import TradingAgentsGraph
 
         config = DEFAULT_CONFIG.copy()
-        config["llm_provider"] = "openai_compatible"
-        config["backend_url"] = GITHUB_MODELS_BASE_URL
-        config["deep_think_llm"] = req["deep_model"]
-        config["quick_think_llm"] = req["quick_model"]
-        config["max_debate_rounds"] = req["max_debate_rounds"]
-        config["max_risk_discuss_rounds"] = req["max_risk_rounds"]
-        config["output_language"] = req["output_language"]
-        config["llm_max_retries"] = 4
-        config["checkpoint_enabled"] = False
+        configure_llm(req, config)
 
-        # Keep the keyless/default data stack where possible. The installed
-        # upstream currently defaults stock, technical, fundamental, and news
-        # to yfinance. Copy the dict so we never mutate DEFAULT_CONFIG globally.
+        # Use the keyless data stack where possible. External data still needs
+        # CIS evidence auditing because provider availability can vary by run.
         config["data_vendors"] = dict(config.get("data_vendors") or {})
         config["data_vendors"].update({
             "core_stock_apis": "yfinance",
