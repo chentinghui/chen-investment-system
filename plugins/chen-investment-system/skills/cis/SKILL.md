@@ -1,13 +1,13 @@
 ---
 name: cis
-description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一用户入口。投资语境下的股票/上市公司/ETF分析、估值、买卖、持仓、财报、风险、目标价、买入价、卖出价和跨标的比较默认进入 CIS。股票研究默认由当前 ChatGPT 会话直接执行 TradingAgents 多角色方法论；全市场/大股票池筛选按需先走 Quant Engine；原版 TradingAgents Python 仅在用户明确要求运行/测试时调用；专业财务、估值和财报方法按需使用 Anthropic Financial Services；最终由 CIS 执行证据门、八维评分、Market Regime、四层交易、ETF/QDII纪律、组合门和中文结论。
+description: 作为陈氏投资系统（Chen Investment System，CIS）的唯一用户入口。投资语境下的股票/上市公司/ETF分析、估值、买卖、持仓、财报、风险、目标价、买入价、卖出价和跨标的比较默认进入 CIS。股票研究默认由当前 ChatGPT 会话直接执行 TradingAgents 多角色方法论；全市场/大股票池筛选按需先走 Quant Factor Ranking；原版 TradingAgents Python 仅在用户明确要求运行/测试时调用；专业财务、估值和财报方法按需使用 Anthropic Financial Services；最终由 CIS 执行证据门、风险门、关键维度门、八维评分、Market Regime、四层交易、ETF/QDII纪律、组合门和中文结论。
 ---
 
-# 陈氏投资系统（CIS）0.4.1
+# 陈氏投资系统（CIS）0.4.2
 
 CIS 是唯一用户入口和最终质量控制层。
 
-**默认架构：ChatGPT → CIS Control Layer →（Quant 预筛按需）→ ChatGPT-native TradingAgents Methodology → 专业金融 Skills（按需）→ Evidence/Risk → CIS Score → Market Regime → Trade/ETF/Portfolio Gate → 最终中文结论。**
+**默认架构：ChatGPT → CIS Control Layer →（Quant 预筛按需）→ ChatGPT-native TradingAgents Methodology → 专业金融 Skills（按需）→ Evidence/Risk → Critical Dimensions → CIS Score → Market Regime → Trade/ETF/Portfolio Gate → 最终中文结论 → Prediction Ledger（按需）。**
 
 日常研究不要求外部 LLM API，也不要求运行 TradingAgents Python。CIS 不自动下单。
 
@@ -30,13 +30,14 @@ CIS 是唯一用户入口和最终质量控制层。
 1. 读取本 `SKILL.md` 与必读 references。
 2. 若可访问 GitHub，优先核验 `chentinghui/chen-investment-system` 当前 `main`，不得凭聊天记忆恢复旧规则。
 3. 股票任务读取 `references/tradingagents-methodology.md`，默认由 ChatGPT 直接执行多角色研究逻辑。
-4. **TradingAgents 采用 7 天 TTL 缓存检查**：读取 `runtime/tradingagents/upstream-status.json`。若距离 `last_checked_at` 不足 `check_ttl_days=7`，本次不访问 TradingAgents 上游，直接使用 CIS 已验证稳定方法论；达到或超过 7 天时，由下一次实际股票研究触发一次轻量 `main` SHA 检查。SHA 未变只刷新检查时间；SHA 变化则标记 `review_required`，未经审查的新逻辑不得进入 CIS。若上游本次不可访问，继续使用稳定基线并披露 `upstream_check=unavailable`。用户明确要求检查更新时可忽略 TTL。
+4. **TradingAgents 7 天 TTL**：读取 `runtime/tradingagents/upstream-status.json`。若距离 `last_checked_at` 不足 `check_ttl_days=7`，本次不访问 TradingAgents 上游；达到或超过 7 天时，由下一次股票研究执行 `scripts/check_tradingagents_upstream.py` 的同等逻辑轻量检查当前 `main` SHA。SHA 变化标记 `review_required`，未经审查的新逻辑不得进入 CIS。上游不可访问不阻塞正常研究。
 5. 只有用户明确要求“运行原版 TradingAgents / 跑官方程序 / 系统测试”时，才启动 `references/tradingagents.md` 的本地/远程运行路径。
-6. 大股票池筛选读取 `references/quant-engine.md`；若涉及规则验证，再读 `references/backtest-validation.md`。
-7. 当前市场环境会显著影响交易计划时读取 `references/market-regime.md`。
-8. 需要历史校准/复盘时读取 `references/performance-loop.md`。
-9. 专业金融任务按需读取 `references/anthropic-financial-services.md`；只有本次真实可访问时才能声称实际运行。
-10. 所有研究结果必须回到 CIS 最终质量门。
+6. 原版 TradingAgents 的 `execution_status=success` / `runtime_readiness=remote_ready` 只表示程序执行完成；默认 `evidence_audit_status=not_run`、`research_quality=unreviewed`，不能直接作为最终研究结论。
+7. 大股票池筛选读取 `references/quant-engine.md`；横截面必须同一 `as_of`。若涉及规则验证，再读 `references/backtest-validation.md`。
+8. 当前市场环境会显著影响交易计划时读取 `references/market-regime.md`。
+9. 需要历史校准/复盘时读取 `references/performance-loop.md`，使用 append-only Prediction Ledger。
+10. 专业金融任务按需读取 `references/anthropic-financial-services.md`；只有本次真实可访问时才能声称实际运行。
+11. 所有研究结果必须回到 CIS 最终质量门。
 
 ## 必读资料
 
@@ -95,82 +96,92 @@ methodology_candidate
 - Risk 必须寻找尾部风险、论点失效和流动性/集中度风险。
 - Research Manager 不得创造新事实，只能裁决已登记证据和冲突。
 
-## Quant Research Engine
+## Quant Factor Ranking Engine
 
 用于“大股票池 → 候选”任务：
 
 ```text
-股票池
+Point-in-time 股票池
   ↓
-Quant factors / point-in-time data
+同一 as_of 因子数据
   ↓
-quant_score + coverage
+quant_score + factor_coverage
   ↓
 Top N 候选
   ↓
 ChatGPT-native TradingAgents Methodology 深研
 ```
 
-`quant_score` 与 `cis_score` 严格分开。Quant baseline 权重目前标记 `experimental_uncalibrated`，必须经回测/样本外验证后才能升级为生产规则。
+`quant_score` 与 `cis_score` 严格分开。Quant baseline 权重目前标记 `experimental_uncalibrated`。`max_drawdown_1y` 支持有符号回撤或正的回撤绝对值，引擎统一取绝对值后按越小越好排序。
 
 ## Backtest / Validation
 
-新增规则、因子、阈值或评分权重，不得仅凭直觉成为默认规则。按 `backtest-validation.md` 检查：
+新增规则、因子、阈值或评分权重，不得仅凭直觉成为默认规则。必须检查：
 
 - look-ahead / survivorship / universe drift / restatement leakage；
 - CAGR、Sharpe、最大回撤、胜率、超额收益；
-- 交易成本；
-- 样本外与 walk-forward 稳定性。
+- **按实际组合换手率计算交易成本**；
+- train / validation / out-of-sample；
+- 样本足够时 walk-forward 稳定性。
+
+## Fail-Closed Evidence / Risk + Critical Dimension Gate
+
+评分引擎默认：
+
+```text
+audit_status = unverified
+risk_status  = unverified
+```
+
+只有明确 `pass` 才可进入 `decision_grade`。
+
+Coverage 之外还必须检查关键维度：
+
+```text
+generic   → fundamentals + valuation + risk_resilience
+long_term → fundamentals + growth + valuation + risk_resilience
+tactical  → technical + risk_resilience
+earnings  → fundamentals + catalyst_macro + risk_resilience
+```
+
+关键维度缺失，即使 coverage >=85%，仍只能 provisional。
 
 ## Market Regime
 
-Regime 只用于环境修正，不直接买卖：
+Regime 只用于环境修正，不直接买卖。Baseline 可使用趋势、广度、VIX、实现波动、信用利差绝对水平和信用变化；严格校验 JSON boolean 和数值范围。
 
-- `risk_on`
-- `neutral`
-- `risk_off`
-- `insufficient`
+输出：`risk_on | neutral | risk_off | insufficient`。
 
-它可以影响 `catalyst_macro`、`risk_resilience`、安全边际和分批节奏，但不能简单规定 risk_off 全卖、risk_on 全买。
+## Prediction Ledger / Performance Loop
 
-## Performance Loop
+长期可复盘研究使用：
 
-历史研究到期后记录实际收益、基准收益、期间最大回撤和证伪条件是否触发，用于检验：
+```text
+scripts/prediction_ledger.py
+runtime/evaluations/predictions.jsonl
+```
 
-- CIS 高分是否真的对应更高未来收益/超额收益；
-- Quant 排名是否有区分度；
-- 不同 Regime 下规则是否稳定；
-- 哪些维度系统性高估或低估。
-
-脚本只生成校准报告，**禁止自动覆盖 CIS 生产权重**。
+Prediction 和 Outcome 采用 append-only event，禁止结果已知后回写历史预测。Performance 评估按总分、horizon、regime 和八维 dimension 做诊断，禁止自动覆盖生产权重。
 
 ## 原版 TradingAgents：显式测试模式
 
 - 本地：`scripts/run_tradingagents.py`。
 - 远程：`.github/workflows/cis-tradingagents.yml`。
-- 远程每次运行重新 clone `TauricResearch/TradingAgents` 当前 `main`，因此显式原版测试使用当次上游最新版。
-- 只有 request_id/ticker/analysis_date 匹配且 `status=success`、`runtime_readiness=remote_ready`、候选非空，才能声称原版本次真实运行。
+- 远程每次运行重新 clone `TauricResearch/TradingAgents` 当前 `main`。
+- 手动 `workflow_dispatch` 必须显式填写 request_id/ticker/analysis_date 等参数，不再默默复用旧 request.json。
+- 结果状态拆为 `execution_status`、`runtime_readiness`、`evidence_audit_status`、`research_quality`。
+- `external_decision_candidate` 永远没有最终动作权。
 
-## TradingAgents 上游更新策略：7天 TTL + Runtime Review
+## TradingAgents 上游更新策略
 
 ```text
-股票研究启动
-  ↓
-读取 upstream-status.json
-  ↓
-距离 last_checked_at < 7天
-  ├─ 是 → 不访问上游，直接使用稳定方法论
-  └─ 否 → 轻量检查 TradingAgents 当前 main SHA
-               ↓
-           SHA 未变 → 刷新 last_checked_at
-           SHA 变化 → review_required
-                         ↓
-                    当次仍使用稳定基线
-                         ↓
-                    审查后再决定是否固化新逻辑
+7天 TTL 未到 → 不访问上游
+TTL 到期 → 下一次股票研究轻量检查 main SHA
+SHA 未变 → 刷新 last_checked_at
+SHA 变化 → review_required → 当次继续稳定基线
 ```
 
-不再使用定时 GitHub Actions 监控 TradingAgents，也不在每次股票研究时重复检查。禁止上游代码自动覆盖 CIS 方法论。
+不使用定时 GitHub Actions 监控，不允许上游代码自动覆盖 CIS 方法论。
 
 ## 专业金融方法
 
@@ -185,6 +196,7 @@ research_question: 本次问题
 mode: quick | standard | deep | holding_review
 analysis_date/as_of: 数据截止时间
 horizon: 短期 | 1-3年 | 3-10年
+decision_context: generic | long_term | tactical | earnings
 portfolio_context: 持仓、权重、成本、基准、约束、资金需求
 ```
 
@@ -192,19 +204,20 @@ portfolio_context: 持仓、权重、成本、基准、约束、资金需求
 
 ## 执行顺序
 
-1. Intake：对象、问题、模式、期限、`as_of`。
-2. Runtime Guard：读取 GitHub 当前 CIS；TradingAgents 仅在 7 天 TTL 到期时检查一次当前上游 SHA。
+1. Intake：对象、问题、模式、期限、`as_of`、decision_context。
+2. Runtime Guard：读取 GitHub 当前 CIS；按 7 天 TTL 决定是否检查 TradingAgents 上游。
 3. Quant Pre-screen：仅大股票池/排名任务按需执行。
 4. Evidence：采集并登记事实、计算、假设、来源和限制。
 5. Core Research：ChatGPT 直接执行 TradingAgents Methodology。
 6. Professional Skills：按需 Anthropic。
-7. Audit：证据审计 + CIS 风险门 + 冲突解释。
-8. Score：按 `scoring-engine.md`。
-9. Regime：当前市场环境会影响交易计划时执行。
-10. Trade Framework：涉及买卖/价位时执行趋势 → 价格 → 成交 → 风险。
-11. ETF/Portfolio Gate：按任务执行。
-12. Synthesis：最终中文研究姿态、证伪条件、复盘触发点。
-13. Performance Record：需要长期校准时记录可复盘结果。
+7. Audit/Risk：两者均必须明确 pass 才能放行决策级。
+8. Critical Dimensions：按任务检查关键维度。
+9. Score：按 `scoring-engine.md`。
+10. Regime：当前市场环境会影响交易计划时执行。
+11. Trade Framework：涉及买卖/价位时执行趋势 → 价格 → 成交 → 风险。
+12. ETF/Portfolio Gate：按任务执行。
+13. Synthesis：最终中文研究姿态、证伪条件、复盘触发点。
+14. Prediction Ledger：需要长期校准时记录不可变研究快照。
 
 ## 八维评分
 
@@ -219,7 +232,7 @@ portfolio_context: 持仓、权重、成本、基准、约束、资金需求
 - positioning 5
 - risk_resilience 10
 
-`coverage < 70%` 不输出单一总分；`70% <= coverage < 85%` 为 provisional；`coverage >= 85%` 且质量门通过才可 decision_grade。
+`coverage < 70%` 不输出单一总分；`70% <= coverage < 85%` 为 provisional；`coverage >= 85%` 也必须通过 Audit/Risk/Critical Dimensions 才可 decision_grade。
 
 ## 四层交易框架
 
@@ -244,9 +257,10 @@ portfolio_context: 持仓、权重、成本、基准、约束、资金需求
 
 - CIS 规则版本；
 - 本次使用 ChatGPT-native methodology / Quant / Regime / 原版 TradingAgents 的实际状态；
-- TradingAgents `upstream_check`：`cached` / `current` / `review_required` / `unavailable`（适用时）；
+- TradingAgents `upstream_check` 状态（适用时）；
 - 数据截止时间；
 - Anthropic 专业 Skill 是否实际运行；
+- Evidence/Risk/Critical Dimension Gate 状态；
 - CIS 评分 coverage；
 - 为什么不是更高/更低分；
 - 关键证伪条件和复盘触发点。
