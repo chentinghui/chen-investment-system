@@ -6,7 +6,7 @@ from strategy_logic import BUY, SELL, DrawdownTracker, cash_interest_amount, cro
 
 
 class QqqDaily(PythonData):
-    """Synthetic daily QQQ OHLC + cash-rate feed used only for engine CI testing."""
+    """Synthetic adjusted daily QQQ OHLC feed used only for LEAN engine CI testing."""
 
     def get_source(self, config, date, is_live_mode):
         path = os.path.join(Globals.data_folder, "custom", "qqq_sma20_50.csv")
@@ -16,7 +16,7 @@ class QqqDaily(PythonData):
         if not line or line.startswith("date,"):
             return None
         parts = line.split(",")
-        if len(parts) < 6:
+        if len(parts) < 5:
             return None
 
         point = QqqDaily()
@@ -27,9 +27,8 @@ class QqqDaily(PythonData):
         point.high = float(parts[2])
         point.low = float(parts[3])
         point.close = float(parts[4])
-        point.cash_rate = float(parts[5])
-        # Custom securities trade at Value. Set it to the adjusted open so a
-        # pending signal from the prior close executes at the next session open.
+        # Custom securities trade at Value. Set it to adjusted open so a pending
+        # prior-close signal executes at the next session open in this harness.
         point.value = point.open
         return point
 
@@ -37,16 +36,18 @@ class QqqDaily(PythonData):
 class QqqSma20Sma50SmokeAlgorithm(QCAlgorithm):
     """Actual LEAN-engine test harness for the production crossover logic.
 
-    It uses public Yahoo/FRED data converted into a local custom security. This
-    deliberately avoids claiming native QuantConnect QQQ data entitlement while
-    still exercising LEAN's event loop, portfolio, fills, fees, slippage,
-    statistics, and CIS result adapter end-to-end.
+    It uses public Yahoo adjusted OHLC converted into a local custom security.
+    Cash yield comes from LEAN's own historical InterestRateProvider, matching
+    the production strategy and removing an external FRED dependency from CI.
+    This is an actual LEAN event-loop/portfolio/fill/statistics test, but it is
+    not presented as a native QuantConnect QQQ-data-entitlement backtest.
     """
 
     def initialize(self):
         self.set_start_date(2020, 1, 2)
         self.set_end_date(2026, 8, 7)
         self.set_cash(100_000)
+        self.set_risk_free_interest_rate_model(InterestRateProvider())
 
         security = self.add_data(QqqDaily, "QQQ_CIS", Resolution.DAILY)
         self._symbol = security.symbol
@@ -76,7 +77,7 @@ class QqqSma20Sma50SmokeAlgorithm(QCAlgorithm):
         point = data[self._symbol]
 
         if not self.is_warming_up:
-            self._accrue_idle_cash(point)
+            self._accrue_idle_cash()
             self._execute_pending_at_open(point)
             self._update_intraday_proxy(point)
 
@@ -117,7 +118,7 @@ class QqqSma20Sma50SmokeAlgorithm(QCAlgorithm):
             self.liquidate(self._symbol)
             self._signals.append(("SELL", signal_date, self.time.strftime("%Y-%m-%d"), float(point.open)))
 
-    def _accrue_idle_cash(self, point):
+    def _accrue_idle_cash(self):
         current_date = self.time.date()
         if self._last_cash_accrual_date is None:
             self._last_cash_accrual_date = current_date
@@ -126,9 +127,10 @@ class QqqSma20Sma50SmokeAlgorithm(QCAlgorithm):
         self._last_cash_accrual_date = current_date
         if self.portfolio.invested or days <= 0:
             return
+
         usd = self.portfolio.cash_book["USD"]
-        rate = max(0.0, float(point.cash_rate))
-        interest = cash_interest_amount(float(usd.amount), rate, days)
+        annual_rate = max(0.0, float(self.risk_free_interest_rate_model.get_interest_rate(self.time)))
+        interest = cash_interest_amount(float(usd.amount), annual_rate, days)
         if interest > 0:
             usd.add_amount(interest)
             self._cash_interest_credited += interest
