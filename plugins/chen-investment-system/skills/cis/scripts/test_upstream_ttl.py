@@ -30,47 +30,37 @@ class UpstreamTTLTests(unittest.TestCase):
     def test_missing_last_checked_is_due(self) -> None:
         self.assertTrue(MODULE.should_check({"check_ttl_days": 7}, self.now))
 
-    def test_latest_numeric_lean_tag_ignores_latest_alias(self) -> None:
-        payload = {
-            "results": [
-                {"name": "latest"},
-                {"name": "17947"},
-                {"name": "17949"},
-                {"name": "research"},
-                {"name": "17948"},
-            ]
-        }
-        self.assertEqual(MODULE.latest_numeric_lean_tag(payload), "17949")
-
-    def test_lean_change_requires_review_and_never_auto_upgrades(self) -> None:
+    def test_reviewed_sha_stays_current(self) -> None:
         status = {
-            "reviewed_tag": "17948",
-            "review_status": "reviewed_pinned_engine_baseline",
-            "check_ttl_days": 7,
-            "pinned_image": "quantconnect/lean:17948",
-        }
-        refreshed = MODULE.apply_lean_check(status, "17949", self.now)
-        self.assertEqual(refreshed["observed_tag"], "17949")
-        self.assertEqual(refreshed["reviewed_tag"], "17948")
-        self.assertEqual(refreshed["review_status"], "review_required")
-        self.assertEqual(refreshed["upstream_check"], "change_detected")
-        self.assertFalse(refreshed["auto_upgrade"])
-        self.assertTrue(refreshed["validation_required_before_upgrade"])
-        self.assertEqual(refreshed["pinned_image"], "quantconnect/lean:17948")
-
-    def test_lean_reviewed_tag_stays_current(self) -> None:
-        status = {
-            "reviewed_tag": "17948",
-            "review_status": "reviewed_pinned_engine_baseline",
+            "reviewed_sha": "abc123",
+            "review_status": "reviewed_current",
             "check_ttl_days": 7,
         }
-        refreshed = MODULE.apply_lean_check(status, "17948", self.now)
+        refreshed = MODULE.apply_check(status, "abc123", self.now)
+        self.assertEqual(refreshed["observed_sha"], "abc123")
         self.assertEqual(refreshed["upstream_check"], "current")
         self.assertTrue(refreshed["review_status"].startswith("reviewed"))
         self.assertEqual(
             refreshed["next_check_not_before"],
             MODULE.iso_z(self.now + timedelta(days=7)),
         )
+
+    def test_changed_sha_requires_review(self) -> None:
+        status = {
+            "reviewed_sha": "abc123",
+            "review_status": "reviewed_current",
+            "check_ttl_days": 7,
+        }
+        refreshed = MODULE.apply_check(status, "def456", self.now)
+        self.assertEqual(refreshed["observed_sha"], "def456")
+        self.assertEqual(refreshed["reviewed_sha"], "abc123")
+        self.assertEqual(refreshed["review_status"], "review_required")
+        self.assertEqual(refreshed["upstream_check"], "change_detected")
+
+    def test_checker_exposes_no_lean_helpers(self) -> None:
+        self.assertFalse(hasattr(MODULE, "apply_lean_check"))
+        self.assertFalse(hasattr(MODULE, "fetch_latest_lean_tag"))
+        self.assertFalse(hasattr(MODULE, "latest_numeric_lean_tag"))
 
 
 if __name__ == "__main__":
