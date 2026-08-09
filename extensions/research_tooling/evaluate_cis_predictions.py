@@ -19,7 +19,7 @@ DIMENSIONS = (
 
 def parse_float(value: Any) -> float | None:
     try:
-        if value is None or str(value).strip() == "":
+        if value is None or isinstance(value, bool) or str(value).strip() == "":
             return None
         number = float(value)
         return number if math.isfinite(number) else None
@@ -69,24 +69,90 @@ def score_bucket(score: float) -> str:
     return "0-59"
 
 
-def sample_status(count: int) -> str:
+def sample_status(count: int, *, independence_known: bool) -> str:
     if count < 30:
         return "insufficient_sample"
     if count < 100:
         return "exploratory_sample"
+    if not independence_known:
+        return "exploratory_independence_unverified"
     return "calibration_candidate"
+
+
+def _sample_basis(items: list[dict[str, Any]]) -> tuple[int, bool, str]:
+    ids = [str(item.get("research_id") or "").strip() for item in items]
+    if ids and all(ids):
+        unique_count = len(set(ids))
+        return unique_count, True, "unique_research_id"
+    return len(items), False, "row_count_research_id_missing"
 
 
 def summarize(items: list[dict[str, Any]]) -> dict[str, Any]:
     realized = [item["realized_return"] for item in items]
     excess = [item["excess_return"] for item in items if item["excess_return"] is not None]
+    sample_count, independence_known, basis = _sample_basis(items)
     return {
-        "count": len(items),
-        "sample_status": sample_status(len(items)),
+        "outcome_count": len(items),
+        "independent_sample_count": sample_count,
+        "sample_basis": basis,
+        "sample_status": sample_status(sample_count, independence_known=independence_known),
         "mean_realized_return": mean(realized) if realized else None,
         "positive_return_rate": sum(1 for r in realized if r > 0) / len(realized) if realized else None,
         "mean_excess_return": mean(excess) if excess else None,
         "positive_excess_rate": sum(1 for r in excess if r > 0) / len(excess) if excess else None,
+    }
+
+
+def _dimension_diagnostics(items: list[dict[str, Any]]) -> dict[str, Any]:
+    diagnostics: dict[str, Any] = {}
+    for name in DIMENSIONS:
+        pairs = [
+            (item["dimensions"][name], item["excess_return"])
+            for item in items
+            if item["dimensions"][name] is not None and item["excess_return"] is not None
+        ]
+        xs = [float(x) for x, _ in pairs]
+        ys = [float(y) for _, y in pairs]
+        count, independence_known, basis = _sample_basis(
+            [item for item in items if item["dimensions"][name] is not None and item["excess_return"] is not None]
+        )
+        diagnostics[name] = {
+            "outcome_count": len(pairs),
+            "independent_sample_count": count,
+            "sample_basis": basis,
+            "sample_status": sample_status(count, independence_known=independence_known),
+            "excess_return_correlation": pearson(xs, ys) if pairs else None,
+            "excess_return_rank_correlation": spearman(xs, ys) if pairs else None,
+        }
+    return diagnostics
+
+
+def _diagnose_horizon(items: list[dict[str, Any]]) -> dict[str, Any]:
+    summary = summarize(items)
+    scores = [item["cis_score"] for item in items]
+    returns = [item["realized_return"] for item in items]
+    excess_pairs = [
+        (item["cis_score"], item["excess_return"])
+        for item in items
+        if item["excess_return"] is not None
+    ]
+    by_score: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    by_regime: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    by_sector: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for item in items:
+        by_score[score_bucket(item["cis_score"])].append(item)
+        by_regime[item["regime"]].append(item)
+        by_sector[item["sector"]].append(item)
+    return {
+        **summary,
+        "score_return_correlation": pearson(scores, returns),
+        "score_excess_return_correlation": pearson(
+            [x for x, _ in excess_pairs], [y for _, y in excess_pairs]
+        ) if excess_pairs else None,
+        "score_buckets": {k: summarize(v) for k, v in sorted(by_score.items())},
+        "regimes": {k: summarize(v) for k, v in sorted(by_regime.items())},
+        "sectors": {k: summarize(v) for k, v in sorted(by_sector.items())},
+        "dimension_diagnostics": _dimension_diagnostics(items),
     }
 
 
@@ -99,6 +165,8 @@ def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if score is None or realized is None:
             continue
         parsed.append({
+            "research_id": str(row.get("research_id") or "").strip() or None,
+            "ticker": str(row.get("ticker") or "").strip().upper() or None,
             "cis_score": score,
             "realized_return": realized,
             "excess_return": realized - benchmark if benchmark is not None else None,
@@ -111,44 +179,45 @@ def evaluate(rows: list[dict[str, Any]]) -> dict[str, Any]:
             },
         })
 
-    by_score: dict[str, list[dict[str, Any]]] = defaultdict(list)
     by_horizon: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    by_regime: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    by_sector: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in parsed:
-        by_score[score_bucket(item["cis_score"])].append(item)
         by_horizon[item["horizon"]].append(item)
-        by_regime[item["regime"]].append(item)
-        by_sector[item["sector"]].append(item)
 
-    scores = [item["cis_score"] for item in parsed]
-    returns = [item["realized_return"] for item in parsed]
-    excess_pairs = [(item["cis_score"], item["excess_return"]) for item in parsed if item["excess_return"] is not None]
+    independent_count, independence_known, sample_basis = _sample_basis(parsed)
+    mixed_horizons = len(by_horizon) > 1
+    horizon_diagnostics = {
+        horizon: _diagnose_horizon(items)
+        for horizon, items in sorted(by_horizon.items())
+    }
 
-    dimension_diagnostics: dict[str, Any] = {}
-    for name in DIMENSIONS:
-        pairs = [(item["dimensions"][name], item["excess_return"]) for item in parsed if item["dimensions"][name] is not None and item["excess_return"] is not None]
-        xs = [float(x) for x, _ in pairs]
-        ys = [float(y) for _, y in pairs]
-        dimension_diagnostics[name] = {
-            "sample_count": len(pairs),
-            "sample_status": sample_status(len(pairs)),
-            "excess_return_correlation": pearson(xs, ys) if pairs else None,
-            "excess_return_rank_correlation": spearman(xs, ys) if pairs else None,
-        }
+    if not mixed_horizons and by_horizon:
+        only = next(iter(horizon_diagnostics.values()))
+        global_score_return = only["score_return_correlation"]
+        global_score_excess = only["score_excess_return_correlation"]
+        global_dimensions = only["dimension_diagnostics"]
+    else:
+        global_score_return = None
+        global_score_excess = None
+        global_dimensions = {}
 
     return {
         "status": "optional_calibration_report",
         "sample_count": len(parsed),
-        "sample_status": sample_status(len(parsed)),
-        "score_return_correlation": pearson(scores, returns),
-        "score_excess_return_correlation": pearson([x for x, _ in excess_pairs], [y for _, y in excess_pairs]) if excess_pairs else None,
-        "score_buckets": {k: summarize(v) for k, v in sorted(by_score.items())},
+        "outcome_count": len(parsed),
+        "unique_research_count": independent_count,
+        "sample_basis": sample_basis,
+        "sample_status": sample_status(independent_count, independence_known=independence_known),
+        "mixed_horizons": mixed_horizons,
+        "score_return_correlation": global_score_return,
+        "score_excess_return_correlation": global_score_excess,
+        "dimension_diagnostics": global_dimensions,
         "horizons": {k: summarize(v) for k, v in sorted(by_horizon.items())},
-        "regimes": {k: summarize(v) for k, v in sorted(by_regime.items())},
-        "sectors": {k: summarize(v) for k, v in sorted(by_sector.items())},
-        "dimension_diagnostics": dimension_diagnostics,
-        "warning": "Optional calibration only. Never auto-rewrite CIS production weights or block normal CIS analysis.",
+        "horizon_diagnostics": horizon_diagnostics,
+        "warning": (
+            "Optional calibration only. Correlations are never pooled across different horizons; "
+            "sample thresholds use unique research_id when available. Multiple horizons from one research "
+            "are correlated outcomes, not independent experiments. Never auto-rewrite CIS production weights."
+        ),
     }
 
 
