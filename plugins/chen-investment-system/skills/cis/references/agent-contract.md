@@ -1,4 +1,4 @@
-# CIS Agent 统一交接契约（0.4.2）
+# CIS Agent 统一交接契约（0.4.5）
 
 所有专家 Agent / 方法论角色必须返回可审计结构，方便总控比较、质量门和评分。
 
@@ -31,6 +31,23 @@ handoff_to:
 open_questions:
 next_review:
 ```
+
+## 机器质量门统一枚举
+
+Evidence Auditor：
+
+```text
+audit_status = unverified | pass | fail | unresolved
+```
+
+Risk Manager：
+
+```text
+risk_status = unverified | pass | fail | unresolved
+risk_override = none | block
+```
+
+`conditional` 与 `caution` 只能作为自然语言说明，不再作为机器接口枚举。需要补证但尚未否决时使用 `unresolved`；只有明确 `pass` 才能进入 `decision_grade`。
 
 ## 交接规则
 
