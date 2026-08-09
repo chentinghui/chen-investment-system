@@ -4,7 +4,10 @@
   "observed_sha": "a33fd4c0f134485a43553a2c23a63cb14adbd88f",
   "reviewed_sha": "a33fd4c0f134485a43553a2c23a63cb14adbd88f",
   "review_status": "reviewed_no_methodology_change",
+  "last_checked_at": "2026-08-09T04:39:00Z",
+  "check_ttl_days": 7,
+  "next_check_not_before": "2026-08-16T04:39:00Z",
   "reviewed_at": "2026-08-09T04:07:00Z",
-  "review_note": "Latest upstream commit only changed README presentation/assets; no Agent, prompt, graph, tool, or risk-flow methodology change was detected.",
-  "policy": "detect_only_do_not_auto_apply_methodology_changes"
+  "review_note": "Latest reviewed upstream commit only changed README presentation/assets; no Agent, prompt, graph, tool, or risk-flow methodology change was detected.",
+  "policy": "use_time_check_with_7_day_ttl_stable_baseline"
 }
