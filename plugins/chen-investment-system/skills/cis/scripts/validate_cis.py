@@ -80,10 +80,13 @@ def main() -> int:
         "Fail-Closed Evidence", "Critical Dimension Gate", "check_tradingagents_upstream.py",
         "execution_status", "research_quality", "CIS 不自动下单",
         "Tactical R/R Gate", "Evidence Freshness", "tactical_setup_gate.py",
+        "Exchange-aware Price / Session Guard", "Quote Freshness", "Setup 生命周期",
+        "us_nasdaq_v1", "Tactical Setup Readiness",
     ], "CIS skill")
     require(workflow, [
         "Core Research", "Optional Research Tooling", "extensions/research_tooling/", "fail-closed",
-        "Price/Session Guard", "Tactical R/R Gate", "signal_as_of",
+        "Exchange-aware Price/Session Guard", "Quote Freshness Guard", "signal_as_of",
+        "invalidated_reprice_required", "setup_expired_reprice_required", "regime_profile",
     ], "workflow")
     require(registry, [
         "Core Analysis", "Extension", "Quant Factor Ranking Engine", "Prediction / Evaluation",
@@ -91,7 +94,8 @@ def main() -> int:
     ], "module registry")
     require(routing, [
         "Optional Research Tooling", "extensions/research_tooling/", "Critical Dimension", "7 天 TTL",
-        "tactical_setup_gate.py", "catalyst_event_review",
+        "tactical_setup_gate.py", "catalyst_event_review", "quote_max_age_seconds",
+        "blocked_pending_stop_confirmation", "us_broad_v1",
     ], "module routing")
     require(external, [
         "7 天 TTL", "execution_status", "research_quality", "Optional Research Tooling", "Market Regime",
@@ -111,13 +115,15 @@ def main() -> int:
     ], "scoring")
     require(regime, [
         "JSON boolean", "high_yield_oas_bps", "realized_vol_20d", "experimental_baseline",
-        "signal_as_of", "freshness",
+        "signal_as_of", "freshness", "us_broad_v1", "excluded_signals", "fresh coverage",
     ], "market regime")
     require(evidence, [
         "Evidence Freshness Guard", "last_close", "tactical_setup_gate.py", "Evidence Audit 不得 `pass`",
+        "quote_max_age_seconds", "exchange + timestamp",
     ], "evidence confidence")
     require(trading_framework, [
         "Tactical Price / Session Guard", "Tactical Risk / Reward Gate", "blocked_do_not_chase", "Entry Zone",
+        "hard_price", "close_confirmation", "invalidated_reprice_required", "setup_expired_reprice_required",
     ], "trading framework")
     require(extension_readme, [
         "CIS Core", "可选外围研究工具", "故障不得阻塞 CIS Core", "5 / 20 / 60 trading days",
@@ -178,11 +184,12 @@ def main() -> int:
     ], "score script")
     require(regime_script, [
         "strict_bool", "high_yield_oas_bps", "realized_vol_20d", "SIGNAL_WEIGHTS",
-        "MAX_SIGNAL_AGE_DAYS", "signal_as_of", "freshness_status",
+        "MAX_SIGNAL_AGE_DAYS", "REGIME_PROFILES", "excluded_signals", "not JSON boolean",
     ], "regime script")
     require(tactical_script, [
         "validate_price_context", "evaluate_tactical_setup", "EXPECTED_PRICE_TYPE", "blocked_do_not_chase",
-        "rr_target1_worst", "last_close_reference",
+        "rr_target1_worst", "last_close_reference", "SUPPORTED_EXCHANGES", "quote_max_age_seconds",
+        "STOP_TYPES", "invalidated_reprice_required", "setup_expired_reprice_required",
     ], "tactical setup script")
     require(ttl_script, ["should_check", "apply_check", "check_ttl_days", "fetch_current_sha"], "TTL script")
     require(local_ta, ["execution_status", "evidence_audit_status", "research_quality", "external_decision_candidate"], "local TradingAgents adapter")
@@ -192,10 +199,14 @@ def main() -> int:
         "test_string_false_is_rejected_for_critical_blocked", "test_tactical_requires_price_and_catalyst_checks",
     ], "score tests")
     require(tactical_tests, [
-        "TacticalSetupGateTests", "test_regular_session_rejects_last_close_as_current", "test_beyond_chase_limit_blocks_entry",
+        "TacticalSetupGateTests", "test_weekend_cannot_pretend_to_be_regular_session",
+        "test_stale_live_quote_is_rejected", "test_stop_breach_invalidates_hard_stop_setup",
+        "test_target1_reached_requires_repricing",
     ], "tactical setup tests")
     require(systematic_tests, [
-        "test_missing_signal_as_of_forces_insufficient", "test_stale_market_signal_forces_insufficient",
+        "test_numeric_signal_rejects_json_boolean",
+        "test_one_stale_signal_is_excluded_when_fresh_coverage_remains_sufficient",
+        "test_many_stale_signals_can_still_force_insufficient",
     ], "systematic layer tests")
     require(hardening_tests, ["TradingAgentsTTLTests", "TradingAgentsAdapterTests"], "hardening tests")
 
@@ -236,7 +247,7 @@ def main() -> int:
         if path.exists():
             raise AssertionError(f"third-party source must not be bundled directly: {path.name}")
 
-    print(f"CIS {version} tactical hardening validation passed")
+    print(f"CIS {version} tactical edge-case validation passed")
     return 0
 
 
