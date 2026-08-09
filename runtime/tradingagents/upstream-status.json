@@ -1,0 +1,10 @@
+{
+  "upstream": "TauricResearch/TradingAgents",
+  "branch": "main",
+  "observed_sha": "a33fd4c0f134485a43553a2c23a63cb14adbd88f",
+  "reviewed_sha": "a33fd4c0f134485a43553a2c23a63cb14adbd88f",
+  "review_status": "reviewed_no_methodology_change",
+  "reviewed_at": "2026-08-09T04:07:00Z",
+  "review_note": "Latest upstream commit only changed README presentation/assets; no Agent, prompt, graph, tool, or risk-flow methodology change was detected.",
+  "policy": "detect_only_do_not_auto_apply_methodology_changes"
+}
