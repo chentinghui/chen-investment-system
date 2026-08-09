@@ -10,6 +10,8 @@ SKILLS_ROOT = ROOT.parent
 SKILL = ROOT / "SKILL.md"
 REFS = ROOT / "references"
 STOCK_ASSISTANT = SKILLS_ROOT / "stock-research-assistant" / "SKILL.md"
+REPO_ROOT = ROOT.parents[3]
+REMOTE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "cis-tradingagents.yml"
 
 
 def read(path: Path) -> str:
@@ -44,19 +46,24 @@ def main() -> int:
     premium_analyzer = read(ROOT / "scripts" / "analyze_etf_premium.py")
     premium_tests = read(ROOT / "scripts" / "test_analyze_etf_premium.py")
     ta_adapter = read(ROOT / "scripts" / "run_tradingagents.py")
+    ta_remote = read(ROOT / "scripts" / "run_tradingagents_remote.py")
+    remote_workflow = read(REMOTE_WORKFLOW)
     assistant = read(STOCK_ASSISTANT)
 
     require(
         skill,
         [
-            "0.3.0",
+            "0.3.1",
             "TradingAgents",
+            "GitHub Actions 远程路径",
+            "runtime/tradingagents/request.json",
+            "remote_ready",
+            "selected_analysts",
             "Anthropic Financial Services",
             "唯一用户入口",
             "自动触发规则",
             "分析 MU",
             "纯事实型问题",
-            "只要答案会影响投资研究或交易决策，默认进入 CIS",
             "Runtime Guard",
             "external_decision_candidate",
             "scoring-engine.md",
@@ -67,141 +74,63 @@ def main() -> int:
     )
     require(
         workflow,
-        [
-            "CIS 0.3",
-            "TradingAgents",
-            "Anthropic Financial Services",
-            "Fallback adapters",
-            "CIS 八维统一评分",
-            "四层结构",
-            "ETF / QDII",
-            "跟踪与复盘",
-        ],
+        ["CIS 0.3", "TradingAgents", "Anthropic Financial Services", "Fallback adapters", "CIS 八维统一评分", "四层结构", "ETF / QDII", "跟踪与复盘"],
         "workflow",
     )
     require(
         registry,
-        [
-            "TradingAgents Core",
-            "upstream_default",
-            "external_decision_candidate",
-            "Anthropic Financial Services",
-            "Trading Framework",
-            "ETF / QDII",
-        ],
+        ["TradingAgents Core", "upstream_default", "external_decision_candidate", "Anthropic Financial Services", "Trading Framework", "ETF / QDII"],
         "registry",
     )
     require(
         routing,
-        [
-            "TradingAgents",
-            "Anthropic",
-            "运行前检查",
-            "Fallback 路由",
-            "四层交易框架",
-            "不得声称已运行",
-        ],
+        ["TradingAgents", "Anthropic", "运行前检查", "Fallback 路由", "四层交易框架", "不得声称已运行"],
         "routing",
     )
     require(
         external,
-        [
-            "TradingAgents（默认通用研究核心）",
-            "v0.3.1",
-            "Apache License 2.0",
-            "external_decision_candidate",
-            "代码持续更新不代表行情/新闻实时",
-            "Anthropic Financial Services",
-        ],
+        ["TradingAgents（默认通用研究核心）", "v0.3.1", "Apache License 2.0", "external_decision_candidate", "Anthropic Financial Services"],
         "external module policy",
     )
     require(
         tradingagents,
         [
-            "默认通用股票研究/决策核心",
-            "Portfolio Manager",
+            "CIS 0.3.1",
+            "remote_ready",
+            "remote_limited",
+            "GitHub Actions 远程桥",
+            "runtime/tradingagents/results/<request_id>.json",
+            "selected_analysts",
+            "run_tradingagents_remote.py",
             "external_decision_candidate",
-            "installed_ready",
             "upstream_only",
-            "look-ahead",
-            "run_tradingagents.py",
         ],
         "TradingAgents adapter policy",
     )
-    require(
-        anthropic,
-        ["dcf-model", "comps-analysis", "earnings-analysis", "thesis-tracker"],
-        "Anthropic policy",
-    )
-    require(
-        orchestration,
-        ["TradingAgents", "Anthropic", "避免重复分析", "external_decision_candidate", "最终综合顺序"],
-        "orchestration",
-    )
-    require(
-        agent_registry,
-        ["fallback adapters", "TradingAgents Analyst Team", "证据审计员", "CIS 专属规则适配器"],
-        "agent registry",
-    )
-    require(
-        output_modes,
-        ["Quick", "Standard", "Deep", "Holding Review", "资料截止时间"],
-        "output modes",
-    )
-    require(
-        contract,
-        ["runtime_readiness", "thesis_falsifiers", "evidence:", "thesis:", "valuation:"],
-        "I/O contract",
-    )
+    require(anthropic, ["dcf-model", "comps-analysis", "earnings-analysis", "thesis-tracker"], "Anthropic policy")
+    require(orchestration, ["TradingAgents", "Anthropic", "避免重复分析", "external_decision_candidate", "最终综合顺序"], "orchestration")
+    require(agent_registry, ["fallback adapters", "TradingAgents Analyst Team", "证据审计员", "CIS 专属规则适配器"], "agent registry")
+    require(output_modes, ["Quick", "Standard", "Deep", "Holding Review", "资料截止时间"], "output modes")
+    require(contract, ["runtime_readiness", "thesis_falsifiers", "evidence:", "thesis:", "valuation:"], "I/O contract")
     require(evidence, ["A 级", "B 级", "C 级", "D 级", "综合置信度"], "evidence policy")
     require(profile, ["status: 未设置", "maximum_single_position", "drawdown_tolerance"], "profile")
     require(lifecycle, ["research_id", "thesis_falsifiers", "change_since_prior"], "lifecycle")
+    require(premium, ["产品身份门", "entry_premium", "结构性溢价", "风险提示公告", "通用阈值"], "cross-border ETF premium policy")
+    require(evaluations, ["分析 MU", "MU现在能买吗", "MU全称是什么", "TradingAgents 包未安装", "external_decision_candidate", "Anthropic DCF", "159509", "英伟达186美元"], "evaluation cases")
+    require(premium_analyzer, ["def analyze", "current_premium_pct", "entry_premium_pct", "premium_regime"], "ETF premium analyzer")
+    require(premium_tests, ["159509", "insufficient_history", "rejects_non_positive_values"], "ETF premium tests")
+    require(ta_adapter, ["TradingAgentsGraph", "propagate", "external_decision_candidate", "probe-only", "upstream_only"], "TradingAgents local runtime adapter")
     require(
-        premium,
-        ["产品身份门", "entry_premium", "结构性溢价", "风险提示公告", "通用阈值"],
-        "cross-border ETF premium policy",
+        ta_remote,
+        ["TradingAgentsGraph", "selected_analysts", "remote_ready", "external_decision_candidate", "qwen3:4b-instruct", "openai_compatible"],
+        "TradingAgents remote runtime adapter",
     )
     require(
-        evaluations,
-        [
-            "分析 MU",
-            "MU现在能买吗",
-            "MU全称是什么",
-            "TradingAgents 包未安装",
-            "external_decision_candidate",
-            "look-ahead leakage",
-            "Anthropic DCF",
-            "159509",
-            "英伟达186美元",
-        ],
-        "evaluation cases",
+        remote_workflow,
+        ["runtime/tradingagents/request.json", "TauricResearch/TradingAgents", "OLLAMA_CONTEXT_LENGTH=32768", "run_tradingagents_remote.py", "runtime/tradingagents/results"],
+        "TradingAgents GitHub Actions workflow",
     )
-    require(
-        premium_analyzer,
-        ["def analyze", "current_premium_pct", "entry_premium_pct", "premium_regime"],
-        "ETF premium analyzer",
-    )
-    require(
-        premium_tests,
-        ["159509", "insufficient_history", "rejects_non_positive_values"],
-        "ETF premium tests",
-    )
-    require(
-        ta_adapter,
-        [
-            "TradingAgentsGraph",
-            "propagate",
-            "external_decision_candidate",
-            "probe-only",
-            "upstream_only",
-        ],
-        "TradingAgents runtime adapter",
-    )
-    require(
-        assistant,
-        ["旧版中文入口兼容层", "调用 `$cis`", "TradingAgents", "Anthropic Financial Services"],
-        "legacy stock assistant",
-    )
+    require(assistant, ["旧版中文入口兼容层", "调用 `$cis`", "TradingAgents", "Anthropic Financial Services"], "legacy stock assistant")
 
     for relative in re.findall(r"`(references/[^`]+\.md)`", skill):
         if not (ROOT / relative).is_file():
@@ -216,7 +145,7 @@ def main() -> int:
         if path.exists():
             raise AssertionError(f"third-party source must not be bundled directly: {path.name}")
 
-    print("CIS 0.3 plugin validation passed")
+    print("CIS 0.3.1 plugin validation passed")
     return 0
 
 
