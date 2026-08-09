@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -11,8 +12,10 @@ if str(HERE) not in sys.path:
 
 from backtest_factor_strategy import run_backtest
 from evaluate_cis_predictions import evaluate
-from prediction_ledger import materialize, record_outcome, record_prediction
+from prediction_ledger import DEFAULT_HORIZONS_TRADING_DAYS, materialize, record_outcome, record_prediction
 from quant_factor_engine import score_rows
+from record_cis_research import normalize_snapshot, record_snapshot
+from settle_due_predictions import DailyBar, settle_prediction
 
 
 class QuantEngineTests(unittest.TestCase):
@@ -53,6 +56,9 @@ class BacktestTests(unittest.TestCase):
 
 
 class PredictionLedgerTests(unittest.TestCase):
+    def test_default_horizons_are_tactical(self) -> None:
+        self.assertEqual(DEFAULT_HORIZONS_TRADING_DAYS, (5, 20, 60))
+
     def test_prediction_is_immutable_and_outcome_is_separate_event(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / "predictions.jsonl"
@@ -60,7 +66,7 @@ class PredictionLedgerTests(unittest.TestCase):
                 "research_id": "MU-20260809-001",
                 "as_of": "2026-08-09",
                 "ticker": "MU",
-                "cis_version": "0.4.2",
+                "cis_version": "0.4.3",
                 "cis_score": 82,
                 "score_status": "provisional",
                 "research_posture": "进入深入研究",
@@ -84,6 +90,89 @@ class PredictionLedgerTests(unittest.TestCase):
             rows = materialize(ledger)
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["outcomes"][0]["realized_return"], 0.12)
+
+
+class ResearchRecorderTests(unittest.TestCase):
+    def test_snapshot_defaults_to_tactical_horizons(self) -> None:
+        snapshot = normalize_snapshot({
+            "ticker": "mu",
+            "as_of": "2026-08-09",
+            "score_status": "provisional",
+            "research_posture": "继续观察",
+            "benchmark": "SOXX",
+        })
+        self.assertEqual(snapshot["ticker"], "MU")
+        self.assertEqual(snapshot["horizons_trading_days"], [5, 20, 60])
+
+    def test_record_snapshot_writes_prediction_event(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "predictions.jsonl"
+            event = record_snapshot(ledger, {
+                "ticker": "NVDA",
+                "as_of": "2026-08-09",
+                "score_status": "provisional",
+                "research_posture": "继续观察",
+                "benchmark": "QQQ",
+            })
+            self.assertEqual(event["event_type"], "prediction")
+            self.assertEqual(event["horizons_trading_days"], [5, 20, 60])
+
+
+class SettlementTests(unittest.TestCase):
+    def test_settlement_enters_after_research_date_and_uses_benchmark_sessions(self) -> None:
+        sessions = [
+            date(2026, 8, 3), date(2026, 8, 4), date(2026, 8, 5),
+            date(2026, 8, 6), date(2026, 8, 7), date(2026, 8, 10),
+        ]
+        benchmark = [DailyBar(day, 200 + index) for index, day in enumerate(sessions)]
+        stock = [DailyBar(day, value) for day, value in zip(sessions, [100, 101, 102, 103, 104, 110])]
+
+        def fake_fetcher(symbol: str, start: date, end: date) -> list[DailyBar]:
+            return benchmark if symbol == "SPY" else stock
+
+        outcomes, warnings = settle_prediction(
+            {
+                "research_id": "AAA-1",
+                "as_of": "2026-08-01",
+                "ticker": "AAA",
+                "benchmark": "SPY",
+                "horizons_trading_days": [5],
+            },
+            set(),
+            today=date(2026, 8, 10),
+            fetcher=fake_fetcher,
+        )
+        self.assertEqual(warnings, [])
+        self.assertEqual(len(outcomes), 1)
+        self.assertEqual(outcomes[0]["entry_session_date"], "2026-08-03")
+        self.assertEqual(outcomes[0]["exit_session_date"], "2026-08-10")
+        self.assertEqual(outcomes[0]["horizon_calendar_basis"], "benchmark_sessions:SPY")
+        self.assertEqual(outcomes[0]["path_metric_basis"], "adjusted_close_only")
+
+    def test_missing_stock_price_on_next_session_is_left_unresolved(self) -> None:
+        benchmark = [
+            DailyBar(date(2026, 8, 3), 200),
+            DailyBar(date(2026, 8, 4), 201),
+        ]
+        stock = [DailyBar(date(2026, 8, 4), 100)]
+
+        def fake_fetcher(symbol: str, start: date, end: date) -> list[DailyBar]:
+            return benchmark if symbol == "SPY" else stock
+
+        outcomes, warnings = settle_prediction(
+            {
+                "research_id": "HALT-1",
+                "as_of": "2026-08-01",
+                "ticker": "HALT",
+                "benchmark": "SPY",
+                "horizons_trading_days": [1],
+            },
+            set(),
+            today=date(2026, 8, 4),
+            fetcher=fake_fetcher,
+        )
+        self.assertEqual(outcomes, [])
+        self.assertTrue(any("no executable stock price" in warning for warning in warnings))
 
 
 class EvaluationTests(unittest.TestCase):
