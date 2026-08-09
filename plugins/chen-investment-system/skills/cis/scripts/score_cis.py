@@ -23,6 +23,11 @@ CRITICAL_DIMENSIONS = {
     "earnings": ("fundamentals", "catalyst_macro", "risk_resilience"),
 }
 
+TACTICAL_REQUIRED_CHECKS = ("price_context", "catalyst_event_review")
+VALID_AUDIT_STATUSES = {"unverified", "pass", "fail", "unresolved"}
+VALID_RISK_STATUSES = {"unverified", "pass", "fail", "unresolved"}
+VALID_RISK_OVERRIDES = {"none", "block"}
+
 
 @dataclass(frozen=True)
 class ScoreResult:
@@ -32,6 +37,7 @@ class ScoreResult:
     research_posture: str
     missing_dimensions: tuple[str, ...]
     missing_critical_dimensions: tuple[str, ...]
+    missing_context_checks: tuple[str, ...]
     blocked_reasons: tuple[str, ...]
     decision_context: str
 
@@ -43,12 +49,27 @@ class ScoreResult:
             "research_posture": self.research_posture,
             "missing_dimensions": list(self.missing_dimensions),
             "missing_critical_dimensions": list(self.missing_critical_dimensions),
+            "missing_context_checks": list(self.missing_context_checks),
             "blocked_reasons": list(self.blocked_reasons),
             "decision_context": self.decision_context,
         }
 
 
-def _validate(scores: Mapping[str, float | int | None], decision_context: str) -> None:
+def _strict_bool(value: object, label: str) -> bool:
+    if type(value) is not bool:
+        raise ValueError(f"{label} must be a JSON boolean")
+    return value
+
+
+def _validate(
+    scores: Mapping[str, float | int | None],
+    decision_context: str,
+    audit_status: str,
+    risk_status: str,
+    risk_override: str,
+    critical_blocked: bool,
+    context_checks: Mapping[str, bool] | None,
+) -> None:
     unknown = set(scores) - set(WEIGHTS)
     if unknown:
         raise ValueError(f"unknown dimensions: {', '.join(sorted(unknown))}")
@@ -63,6 +84,21 @@ def _validate(scores: Mapping[str, float | int | None], decision_context: str) -
             raise ValueError(f"{name} must be numeric or null")
         if not 0 <= float(value) <= 100:
             raise ValueError(f"{name} must be between 0 and 100")
+
+    if audit_status not in VALID_AUDIT_STATUSES:
+        raise ValueError("audit_status must be one of: " + ", ".join(sorted(VALID_AUDIT_STATUSES)))
+    if risk_status not in VALID_RISK_STATUSES:
+        raise ValueError("risk_status must be one of: " + ", ".join(sorted(VALID_RISK_STATUSES)))
+    if risk_override not in VALID_RISK_OVERRIDES:
+        raise ValueError("risk_override must be one of: " + ", ".join(sorted(VALID_RISK_OVERRIDES)))
+    _strict_bool(critical_blocked, "critical_blocked")
+
+    if context_checks is not None:
+        unknown_checks = set(context_checks) - set(TACTICAL_REQUIRED_CHECKS)
+        if unknown_checks:
+            raise ValueError(f"unknown context checks: {', '.join(sorted(unknown_checks))}")
+        for name, value in context_checks.items():
+            _strict_bool(value, f"context_checks.{name}")
 
 
 def _posture(score: Optional[float], grade: str) -> str:
@@ -85,14 +121,24 @@ def calculate_score(
     risk_override: str = "none",
     critical_blocked: bool = False,
     decision_context: str = "generic",
+    context_checks: Mapping[str, bool] | None = None,
 ) -> ScoreResult:
     """Calculate a CIS score using fail-closed quality gates.
 
-    `decision_grade` is available only when coverage is >=85%, the evidence audit
-    and risk review explicitly pass, and all context-critical dimensions exist.
-    Missing dimensions are never imputed as zero.
+    `decision_grade` is available only when coverage is >=85%, evidence audit
+    and risk review explicitly pass, all context-critical dimensions exist, and
+    any context-specific checks have been completed. Missing dimensions are
+    never imputed as zero.
     """
-    _validate(scores, decision_context)
+    _validate(
+        scores,
+        decision_context,
+        audit_status,
+        risk_status,
+        risk_override,
+        critical_blocked,
+        context_checks,
+    )
 
     available = {k: float(v) for k, v in scores.items() if v is not None}
     available_weight = sum(WEIGHTS[k] for k in available)
@@ -101,6 +147,11 @@ def calculate_score(
     missing = tuple(k for k in WEIGHTS if k not in available)
     required = CRITICAL_DIMENSIONS[decision_context]
     missing_critical = tuple(k for k in required if k not in available)
+
+    missing_checks: tuple[str, ...] = ()
+    if decision_context == "tactical":
+        checks = context_checks or {}
+        missing_checks = tuple(name for name in TACTICAL_REQUIRED_CHECKS if checks.get(name) is not True)
 
     weighted = (
         sum(available[k] * WEIGHTS[k] for k in available) / available_weight
@@ -119,6 +170,8 @@ def calculate_score(
         blocked.append("critical_dimension_blocked")
     if missing_critical:
         blocked.append("critical_dimensions_missing")
+    if missing_checks:
+        blocked.append("tactical_checks_incomplete")
 
     if coverage_pct < 70:
         grade = "insufficient"
@@ -132,7 +185,11 @@ def calculate_score(
 
     posture = _posture(reported_score, grade)
     if blocked:
-        if "audit_not_passed" in blocked or "critical_dimensions_missing" in blocked:
+        if (
+            "audit_not_passed" in blocked
+            or "critical_dimensions_missing" in blocked
+            or "tactical_checks_incomplete" in blocked
+        ):
             posture = "证据不足"
         else:
             posture = f"{posture}（风险门未通过）"
@@ -144,6 +201,7 @@ def calculate_score(
         research_posture=posture,
         missing_dimensions=missing,
         missing_critical_dimensions=missing_critical,
+        missing_context_checks=missing_checks,
         blocked_reasons=tuple(blocked),
         decision_context=decision_context,
     )
@@ -162,8 +220,9 @@ def main() -> int:
         audit_status=payload.get("audit_status", "unverified"),
         risk_status=payload.get("risk_status", "unverified"),
         risk_override=payload.get("risk_override", "none"),
-        critical_blocked=bool(payload.get("critical_blocked", False)),
+        critical_blocked=payload.get("critical_blocked", False),
         decision_context=payload.get("decision_context", "generic"),
+        context_checks=payload.get("context_checks"),
     )
     print(json.dumps(result.as_dict(), ensure_ascii=False, indent=2))
     return 0
