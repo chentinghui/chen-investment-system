@@ -10,21 +10,5 @@
   "reviewed_at": "2026-08-09T04:07:00Z",
   "review_note": "Latest reviewed upstream commit only changed README presentation/assets; no Agent, prompt, graph, tool, or risk-flow methodology change was detected.",
   "policy": "use_time_check_with_7_day_ttl_stable_baseline",
-  "executor": "plugins/chen-investment-system/skills/cis/scripts/check_tradingagents_upstream.py",
-  "lean": {
-    "upstream": "quantconnect/lean",
-    "source": "Docker Hub numeric build tags",
-    "reviewed_tag": "17948",
-    "observed_tag": "17948",
-    "review_status": "reviewed_pinned_engine_baseline",
-    "last_checked_at": null,
-    "check_ttl_days": 7,
-    "next_check_not_before": null,
-    "reviewed_at": "2026-08-09T00:00:00Z",
-    "review_note": "CIS heavy LEAN validation is pinned to quantconnect/lean:17948. Upstream detection may flag newer numeric tags, but it must never change the pinned engine automatically.",
-    "policy": "use_time_check_with_7_day_ttl_stable_baseline",
-    "pinned_image": "quantconnect/lean:17948",
-    "auto_upgrade": false,
-    "validation_required_before_upgrade": true
-  }
+  "executor": "plugins/chen-investment-system/skills/cis/scripts/check_tradingagents_upstream.py"
 }
