@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any
 
 
+MIN_HISTORY_OBSERVATIONS = 20
+
+
 def _positive(value: Any, label: str) -> float:
     try:
         number = float(value)
@@ -52,6 +55,7 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         "premium_change_pp": None,
         "history": {
             "valid_observations": 0,
+            "required_observations": MIN_HISTORY_OBSERVATIONS,
             "status": "insufficient_history",
         },
         "note": "Quantitative premium context only; no trade action is generated.",
@@ -77,30 +81,33 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
             _premium(row.get("price"), row.get("iopv"), f"history[{index}]")
         )
 
-    if len(historical_premiums) >= 5:
-        ordered = sorted(historical_premiums)
-        less_or_equal = sum(value <= current_premium for value in ordered)
-        percentile = less_or_equal / len(ordered)
-        p25 = _quantile(ordered, 0.25)
-        p75 = _quantile(ordered, 0.75)
-        if current_premium < p25:
-            regime = "below_historical_interquartile_range"
-        elif current_premium > p75:
-            regime = "above_historical_interquartile_range"
-        else:
-            regime = "within_historical_interquartile_range"
-        result["history"] = {
-            "valid_observations": len(ordered),
-            "status": "ready",
-            "minimum_premium_pct": _round_pct(ordered[0]),
-            "p25_premium_pct": _round_pct(p25),
-            "median_premium_pct": _round_pct(statistics.median(ordered)),
-            "p75_premium_pct": _round_pct(p75),
-            "maximum_premium_pct": _round_pct(ordered[-1]),
-            "current_percentile_pct": round(percentile * 100, 2),
-            "premium_regime": regime,
-        }
+    if len(historical_premiums) < MIN_HISTORY_OBSERVATIONS:
+        result["history"]["valid_observations"] = len(historical_premiums)
+        return result
 
+    ordered = sorted(historical_premiums)
+    less_or_equal = sum(value <= current_premium for value in ordered)
+    percentile = less_or_equal / len(ordered)
+    p25 = _quantile(ordered, 0.25)
+    p75 = _quantile(ordered, 0.75)
+    if current_premium < p25:
+        regime = "below_historical_interquartile_range"
+    elif current_premium > p75:
+        regime = "above_historical_interquartile_range"
+    else:
+        regime = "within_historical_interquartile_range"
+    result["history"] = {
+        "valid_observations": len(ordered),
+        "required_observations": MIN_HISTORY_OBSERVATIONS,
+        "status": "ready",
+        "minimum_premium_pct": _round_pct(ordered[0]),
+        "p25_premium_pct": _round_pct(p25),
+        "median_premium_pct": _round_pct(statistics.median(ordered)),
+        "p75_premium_pct": _round_pct(p75),
+        "maximum_premium_pct": _round_pct(ordered[-1]),
+        "current_percentile_pct": round(percentile * 100, 2),
+        "premium_regime": regime,
+    }
     return result
 
 
