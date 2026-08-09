@@ -1,7 +1,7 @@
 {
   "name": "chen-investment-system",
   "version": "0.4.2",
-  "description": "陈氏投资系统：ChatGPT-native TradingAgents 方法论 + Quant/Backtest/Regime/Prediction Ledger/Performance Loop + 专业金融 Skills + CIS fail-closed 最终质量门。",
+  "description": "陈氏投资系统：以股票分析为核心，按需调用外部专业方法与独立研究工具。",
   "author": {
     "name": "chentinghui",
     "url": "https://github.com/chentinghui"
@@ -13,27 +13,23 @@
     "investment-research",
     "public-equity",
     "tradingagents",
-    "quant-research",
-    "backtest",
-    "market-regime",
-    "prediction-ledger",
-    "anthropic-financial-services",
     "valuation",
+    "market-regime",
     "portfolio",
     "chinese"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "陈氏投资系统",
-    "shortDescription": "系统化股票研究 + 量化筛选 + 风险与交易纪律",
-    "longDescription": "CIS 0.4.2 默认由当前 ChatGPT 会话直接执行 TradingAgents 多角色研究方法论；TradingAgents 上游采用 7 天 TTL 的使用时轻量检查并由确定性脚本支持；大股票池按需使用 Quant Factor Ranking 预筛，Backtest 按换手率计成本并支持 train/validation/OOS，Market Regime 负责环境修正，Prediction Ledger 与 Performance Loop 负责历史校准；Evidence/Risk 改为 fail-closed，并加入 Critical Dimension Gate；Anthropic Financial Services 处理 DCF、Comps、财报和模型等专业子问题。原版 TradingAgents Python 仅显式测试时运行。",
+    "shortDescription": "系统化股票分析 + 风险与交易纪律",
+    "longDescription": "CIS 0.4.2 以股票分析为核心：ChatGPT-native TradingAgents 多角色研究、Evidence/Risk fail-closed、Critical Dimension Gate、八维评分、Market Regime、四层交易、ETF/QDII与组合门。Anthropic Financial Services 按需提供 DCF、Comps、财报等专业方法；TradingAgents 上游采用 7 天 TTL 的使用时检查。Quant、Backtest、Prediction/Evaluation 已物理隔离到 extensions/research_tooling，仅在筛选、验证或复盘任务中按需调用，不属于日常单股分析链。",
     "developerName": "chentinghui",
     "category": "Productivity",
     "capabilities": ["Interactive"],
     "defaultPrompt": [
-      "用陈氏投资系统分析一只股票，按当前 CIS 0.4.2 规则执行 fail-closed 证据/风险门、关键维度门和多角色研究。",
-      "用陈氏投资系统从一个同一 as_of 的股票池中做量化预筛，再深度研究排名靠前的候选。",
-      "复盘我的持仓，执行 CIS 八维评分、Market Regime、四层交易框架、组合门和 Prediction Ledger。"
+      "用陈氏投资系统分析一只股票，执行多角色研究、fail-closed 证据/风险门、关键维度门、CIS评分和交易框架。",
+      "用陈氏投资系统判断一只股票现在是否适合做短期差价，给出趋势、关键价位、风险和证伪条件。",
+      "从一个同一 as_of 的股票池中筛选候选时，按需调用 Optional Quant，再回到 CIS Core 深度研究。"
     ]
   }
 }
