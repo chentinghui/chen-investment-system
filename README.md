@@ -1,6 +1,6 @@
 # 陈氏投资系统（Chen Investment System，CIS）
 
-当前版本：**0.4.0**
+当前版本：**0.4.1**
 
 CIS 是一个中文系统化投资研究控制层。它不自动下单，也不把单一模型/分数当成最终决策。
 
@@ -37,16 +37,41 @@ Market Regime（按需）
 Performance Loop（历史校准）
 ```
 
-## 0.4.0 主要变化
+## 0.4.1 主要变化
 
-- 日常股票研究默认改为 **ChatGPT-native TradingAgents Methodology**，不再要求外部 LLM API 或每次运行 TradingAgents Python。
+- 日常股票研究默认使用 **ChatGPT-native TradingAgents Methodology**，不要求外部 LLM API 或每次运行 TradingAgents Python。
+- TradingAgents 上游检查改为 **7 天 TTL 缓存模式**：一周内不重复访问上游；超过 7 天后，由下一次股票研究轻量检查一次最新 `main` SHA。
+- 删除 TradingAgents 定时上游监控 GitHub Actions；发现新 SHA 后仍需审查，不能自动覆盖 CIS 稳定方法论。
 - 原版 TradingAgents Python 保留为显式测试/A-B 验证路径；远程测试每次重新拉取上游 `main`。
-- 新增 TradingAgents 上游 SHA 自动检测；只标记 `review_required`，**不会自动覆盖 CIS 方法论**。
-- 新增 **Quant Research Engine**：大股票池横截面因子筛选和排序。
-- 新增 **Backtest / Validation**：验证因子、阈值、评分规则，检查前视/幸存者偏差和交易成本。
-- 新增 **Market Regime Layer**：risk_on / neutral / risk_off 环境分类，用于安全边际和风险条件修正。
-- 新增 **Performance Loop**：把历史 CIS 分数和未来实际收益对照，评估评分区分度并支持人工校准。
-- 强化多角色独立性：Bull/Bear/Risk 必须尽量使用不同证据/机制，Research Manager 不得创造新事实。
+- Quant Research Engine、Backtest / Validation、Market Regime、Performance Loop 继续作为 CIS 自有研究与校准层。
+- Anthropic Financial Services 继续在使用时读取目标上游 Skill，用于 DCF、Comps、财报和模型等专业子问题。
+
+## TradingAgents 上游策略
+
+状态文件：
+
+```text
+runtime/tradingagents/upstream-status.json
+```
+
+规则：
+
+```text
+股票研究
+  ↓
+last_checked_at 距今 < 7天
+  ├─ 是 → 不访问 TradingAgents 上游，使用已验证稳定方法论
+  └─ 否 → 轻量检查当前 main SHA
+               ↓
+           SHA 未变 → 刷新检查时间
+           SHA 变化 → review_required
+                         ↓
+                    当次继续使用稳定基线
+                         ↓
+                    审查后再决定是否同步方法论
+```
+
+用户明确要求“检查 TradingAgents 更新”时可以忽略 TTL 立即检查。上游暂时不可访问不会阻塞正常股票研究。
 
 ## CIS 八维评分
 
@@ -117,27 +142,15 @@ plugins/chen-investment-system/skills/cis/scripts/evaluate_cis_predictions.py
 
 脚本**不得自动修改生产权重**；所有权重变化必须经过样本外证据和人工/ChatGPT 审查。
 
-## TradingAgents 上游同步
-
-```text
-TauricResearch/TradingAgents main SHA 变化
-  ↓
-.github/workflows/cis-tradingagents-upstream-watch.yml
-  ↓
-runtime/tradingagents/upstream-status.json = review_required
-  ↓
-审查 Agent / Prompt / Graph / Tool / Risk 流程
-  ↓
-只吸收明确有价值的变化
-```
-
-原版 TradingAgents 的显式测试路径仍在：
+## 原版 TradingAgents 显式测试
 
 ```text
 .github/workflows/cis-tradingagents.yml
 plugins/chen-investment-system/skills/cis/scripts/run_tradingagents.py
 plugins/chen-investment-system/skills/cis/scripts/run_tradingagents_remote.py
 ```
+
+原版测试每次拉取 TradingAgents 当前 `main`，但其 BUY/SELL/HOLD 结果仅作为 `external_decision_candidate`，不能绕过 CIS 最终质量门。
 
 ## 四层交易框架
 
