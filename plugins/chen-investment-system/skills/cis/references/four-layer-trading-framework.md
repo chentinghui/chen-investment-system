@@ -1,8 +1,8 @@
-# CIS 四层结构与双向卖出规则
+# CIS 四层结构与双向卖出规则（0.4.5）
 
 ## 适用范围
 
-当用户询问股票、ETF 或指数的买入、持有、加仓、减仓、止盈、止损、退出或具体价位时，必须执行本规则。对英伟达（NVDA）、QQQ 和纳斯达克100的分析，默认强制使用本规则。
+当用户询问股票、ETF 或指数的买入、持有、加仓、减仓、止盈、止损、退出或具体价位时，必须执行本规则。
 
 本规则用于组织技术面和持仓动作，不替代基本面、估值、宏观、事件和组合风险研究。
 
@@ -34,7 +34,7 @@ quote_max_age_seconds（活跃交易时段）
 quote_session_date（closed / last_close）
 ```
 
-`market_session` 不是调用者可以随意声明的标签。`scripts/tactical_setup_gate.py` 必须根据 `analysis_timestamp + exchange` 的美东交易日历/时段基线自行推导 session；若调用者提供的 `market_session` 与推导结果冲突，直接拒绝。
+当前实现是 **US-equity common session baseline**，不是每个 venue 的官方实时交易日历。`market_session` 由 `scripts/tactical_setup_gate.py` 根据带时区时间戳推导；调用者提供的值只能交叉校验，不能覆盖推导结果。
 
 语义必须匹配：
 
@@ -43,9 +43,11 @@ quote_session_date（closed / last_close）
 - `afterhours` → `afterhours`；
 - `closed` → `last_close`。
 
-活跃时段报价必须通过 freshness gate；调用者必须声明该行情源允许的 `quote_max_age_seconds`，且 Core baseline 不允许把超过 3600 秒的报价包装成活跃时段当前价。`closed` 状态必须标明 `quote_session_date`，且只能引用最近一个已完成交易日的正式收盘。
+0.4.5 还要求 **quote observation session 与 analysis session 一致**。例如 09:00 ET 的盘前 quote 不能在09:35 ET 被包装成 regular `live`，即使 quote age 未超过上限。
 
-当前 stdlib 日历基线覆盖 XNAS/XNYS 的常规周末、主要完整休市日以及常见提前收盘日；特殊临时休市仍由 Evidence Layer 额外核验，不能把代码基线包装成交易所官方实时日历。
+活跃时段调用者必须声明 `quote_max_age_seconds`，且 Core baseline 不允许超过 3600 秒。`closed` 状态必须标明 `quote_session_date`，且只能引用最近一个已完成交易日的正式收盘；`quote_timestamp` 日期也必须匹配该 session。
+
+当前 stdlib 日历基线覆盖常规周末、主要完整休市日以及常见提前收盘日；特殊临时休市仍由 Evidence Layer 额外核验。
 
 ## Tactical Risk / Reward Gate
 
@@ -55,7 +57,7 @@ quote_session_date（closed / last_close）
 Entry Zone
 Chase Limit（如适用）
 Stop / Invalidation
-Stop Type
+Stop Type（必填）
 Target 1
 Target 2（如适用）
 Reward / Risk
@@ -72,7 +74,7 @@ Reward / Risk
 
 ### Stop / Invalidation 语义
 
-`stop_type` 必须明确：
+`stop_type` 必须显式提供，代码不再默认 `hard_price`：
 
 ```text
 hard_price
@@ -81,20 +83,22 @@ technical_invalidation
 ```
 
 - `hard_price`：价格触及/越过 Stop 即视为原 setup 失效；
-- `close_confirmation`：盘中越过 Stop 先进入 `blocked_pending_stop_confirmation`，只有收盘确认后才失效；
+- `close_confirmation`：盘中越过 Stop 先进入 `blocked_pending_stop_confirmation`，只有确认条件满足后才失效；
 - `technical_invalidation`：需要额外技术失效确认，未确认前也不得继续给出新的入场资格。
 
-对非 `hard_price`，调用者必须明确 `stop_confirmation_met=true/false`，不得让代码猜测。
+对非 `hard_price`，调用者必须明确 `stop_confirmation_met=true/false`。一旦为 `true`，表示旧 setup 已经确认失效；**即使价格随后反弹回 Stop 内侧，旧计划也不能复活**，必须重新定 Entry/Stop/Target。
+
+`hard_price` 如需表达“此前已经触发过、当前又反弹”的历史状态，也可以显式传 `stop_confirmation_met=true`，使旧 setup 保持 invalidated。
 
 ### Setup 生命周期
 
 旧交易计划不能无限有效：
 
-- 当前价已经越过 hard Stop，或确认型 Stop 已满足确认 → `invalidated_reprice_required`；
+- 当前价越过 hard Stop，或任何 Stop 已确认失效 → `invalidated_reprice_required`；
 - 当前价已经到达/越过 Target 1 → `setup_expired_reprice_required`；
 - 越过 Chase Limit → `blocked_do_not_chase`；
 - 未进入 Entry Zone → `wait_for_entry`；
-- Stop 已盘中越过但确认未完成 → `blocked_pending_stop_confirmation`。
+- Stop 已穿越但确认未完成 → `blocked_pending_stop_confirmation`。
 
 Long 的 Chase Limit 必须满足 `entry_high <= chase_limit < target1`；Short 必须满足 `target1 < chase_limit <= entry_low`。不得出现 Chase Limit 已经越过 Target 1 的无意义计划。
 
@@ -134,7 +138,7 @@ Long 的 Chase Limit 必须满足 `entry_high <= chase_limit < target1`；Short 
 
 对买卖价位或持仓复盘，输出必须同时包含：
 
-1. 当前价格、`price_type`、exchange/session 与资料截止时间；
+1. 当前价格、`price_type`、session 与资料截止时间；
 2. 趋势层结论；
 3. 关键支撑、压力和成交确认条件；
 4. **继续持有区**；
