@@ -1,6 +1,6 @@
-# CIS 0.4 Agent / Engine 登记表
+# CIS 0.4.2 Agent / Engine 登记表
 
-CIS 0.4.0 默认不运行外部多 Agent 程序，而是由当前 ChatGPT 会话执行 TradingAgents 多角色方法论；Quant、Regime、Backtest、Performance Loop 作为独立系统层。
+CIS 默认不运行外部多 Agent 程序，而是由当前 ChatGPT 会话执行 TradingAgents 多角色方法论；Quant、Regime、Backtest、Prediction Ledger、Performance Loop 作为独立系统层。
 
 ## 默认研究角色
 
@@ -21,32 +21,37 @@ CIS 0.4.0 默认不运行外部多 Agent 程序，而是由当前 ChatGPT 会话
 
 | 模块/Agent | 主要职责 | 状态 |
 |---|---|---|
-| 陈氏投资分析师 | Runtime Guard、路由、Evidence、Score、最终中文结论 | **始终启用** |
-| Evidence Audit | 来源、时效、前视偏差、冲突 | **独立质量门** |
-| Quant Research Engine | 股票池因子筛选与排序 | experimental |
-| Backtest Validator | 历史验证、偏差、成本、样本外 | experimental |
-| Market Regime Layer | 风险环境分类与安全边际修正 | experimental |
-| Performance Loop | 预测结果复盘与校准报告 | installed policy |
-| 技术与市场结构适配器 | CIS 四层交易框架 | CIS-specific |
-| 风险经理 | CIS 下行机制、证伪条件和风险覆盖 | CIS-specific |
-| 组合与仓位经理 | 真实组合数据门 | CIS-specific |
-| 基本面/成长/宏观/估值自写 Agent | 仅关键冲突或默认方法无法完成时 | fallback / validation |
+| 陈氏投资分析师 | Runtime Guard、路由、最终中文结论 | **始终启用** |
+| Evidence Audit | 来源、时效、前视偏差、冲突 | **fail-closed 独立质量门** |
+| Risk Review | 尾部风险、论点失效、集中度/流动性 | **fail-closed 独立质量门** |
+| Critical Dimension Gate | 按 decision_context 检查关键维度 | **独立质量门** |
+| CIS Scoring | 八维 coverage + weighted score | 生产启发式、待校准 |
+| Quant Research Engine | 大股票池 point-in-time 横截面因子排序 | experimental |
+| Backtest Validator | 换手成本、偏差检查、train/validation/OOS | experimental |
+| Market Regime Layer | 趋势/广度/波动/信用环境分类 | experimental |
+| TradingAgents TTL Checker | 每7天到期后按需检查一次上游 SHA | installed |
+| Prediction Ledger | append-only prediction/outcome 记录 | installed |
+| Performance Loop | 按 horizon/regime/dimension 做校准诊断 | installed policy |
+| ETF / QDII Gate | 产品身份、溢价、申赎、时差、流动性 | installed |
+| Portfolio Gate | 成本、权重、集中度、约束、资金需求 | installed |
 
-## 外部专业/测试模块
+## 外部运行角色
 
-| 模块 | 用途 | 默认条件 |
-|---|---|---|
-| Anthropic Financial Services | DCF/Comps/三表/Earnings/模型/竞争/论点 | 专业子问题按需 |
-| Original TradingAgents Runtime | 官方 Python A/B 验证/系统测试 | 用户明确要求 |
+`Original TradingAgents Runtime` 仅显式测试。其状态必须拆开记录：
 
-## 调度原则
+```text
+execution_status
+runtime_readiness
+evidence_audit_status
+research_quality
+```
 
-- Quick：最相关 1–2 个 methodology Analyst + 简化反证。
-- Standard：Market + Fundamentals + News（Sentiment按需）+ Bull/Bear + Research Manager + CIS质量门。
-- Deep：四 Analyst + 完整 Bull/Bear/Risk + 专业金融 Skills（按需）。
-- Holding Review：上述链路 + 四层交易框架 + 组合门。
-- Screening：Quant → Top N → methodology 深研。
-- Backtest：只验证规则，不产生交易动作。
-- ETF/QDII：CIS 专属产品路由优先。
+`remote_ready` / `installed_ready` 只能表示程序完成，不能表示结论已被 CIS 接受。
 
-不得为了“看起来全面”重复运行同职责角色，也不得让同一个模型的多角色形式掩盖共同证据来源造成的相关性错误。
+## 权限边界
+
+- Analyst / Bull / Bear / Research Manager / Trader / Risk / Portfolio Perspective 都没有最终动作权。
+- Quant、Regime、Backtest、Performance 都没有最终动作权。
+- Anthropic Financial Services 没有最终动作权。
+- 原版 TradingAgents 的 `external_decision_candidate` 没有最终动作权。
+- 最终结论只能由 CIS Control Layer 在所有适用质量门后生成。
