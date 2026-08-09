@@ -1,4 +1,4 @@
-# ChatGPT-native TradingAgents Methodology（CIS 0.4.3）
+# ChatGPT-native TradingAgents Methodology（CIS 0.4.4）
 
 本文件定义 CIS 的默认股票研究方法。它吸收 `TauricResearch/TradingAgents` 的多角色结构，但默认由当前 ChatGPT 会话直接执行，不要求运行 TradingAgents Python，也不要求外部 LLM API。
 
@@ -120,6 +120,6 @@ TradingAgents 上游不使用定时 GitHub Actions 监控，也不在每次股�
 - 模型角色不是证据来源；每个事实仍要落到真实数据源。
 - 代码仓库更新不代表行情、财报或新闻实时。
 - 历史日期研究禁止使用 `analysis_date` 之后的信息。
-- 短线分析中 `last_close`、盘前、盘后和 regular live 报价必须明确区分，关键新闻/催化剂必须检查当前最新公开信息。
+- 短线分析中 exchange/session、quote freshness、`last_close`、盘前、盘后和 regular live 报价必须明确区分，关键新闻/催化剂必须检查当前最新公开信息。
 - Bull/Bear 的任务是暴露不确定性，不是制造戏剧化争论。
 - 缺失数据不填 0、不猜测；按 CIS coverage / Critical Dimension Gate 处理。
