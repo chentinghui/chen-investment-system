@@ -37,6 +37,7 @@ jobs:
         run: |
           python -m py_compile \
             plugins/chen-investment-system/skills/cis/scripts/route_cis.py \
+            plugins/chen-investment-system/skills/cis/scripts/check_external_engines.py \
             plugins/chen-investment-system/skills/cis/scripts/score_cis.py \
             plugins/chen-investment-system/skills/cis/scripts/analyze_etf_premium.py \
             plugins/chen-investment-system/skills/cis/scripts/classify_market_regime.py \
