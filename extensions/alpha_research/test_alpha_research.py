@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 
 
@@ -24,6 +25,8 @@ alpha_import = load_module("cis_alpha_import", "worldquant/alpha_import.py")
 alpha_validator = load_module("cis_alpha_validator", "worldquant/alpha_validator.py")
 cross_section = load_module("cis_cross_section", "factor_engine/cross_section.py")
 factor_test = load_module("cis_factor_test", "factor_engine/factor_test.py")
+factor_library = load_module("cis_factor_library", "factor_engine/factor_library.py")
+alpha_miner = load_module("cis_alpha_miner", "factor_engine/alpha_miner.py")
 model_test = load_module("cis_model_test", "ml_research/model_test.py")
 
 
@@ -136,6 +139,62 @@ class CrossSectionTests(unittest.TestCase):
         ]
         result = factor_test.evaluate_factor_rows(rows, factor_field="value", direction="low")
         self.assertGreater(result["summary"]["mean_rank_ic"], 0)
+
+
+class LightweightAlphaResearchTests(unittest.TestCase):
+    @staticmethod
+    def _bars(days: int = 45) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = []
+        start = date(2026, 1, 1)
+        for ticker_index, ticker in enumerate(("A", "B", "C", "D", "E"), start=1):
+            close = 100.0
+            for day_index in range(days):
+                close *= 1.0 + ticker_index * 0.0005 + day_index * 0.00001
+                rows.append(
+                    {
+                        "date": (start + timedelta(days=day_index)).isoformat(),
+                        "ticker": ticker,
+                        "close": close,
+                        "volume": 1_000_000 + ticker_index * 10_000 + day_index * 1_000,
+                    }
+                )
+        return rows
+
+    def test_factor_panel_uses_past_for_features_and_future_for_label(self) -> None:
+        bars = []
+        start = date(2026, 1, 1)
+        for day_index in range(25):
+            bars.append(
+                {
+                    "date": (start + timedelta(days=day_index)).isoformat(),
+                    "ticker": "A",
+                    "close": 100 + day_index,
+                    "volume": 1000 + day_index,
+                }
+            )
+        panel = factor_library.build_factor_panel(bars)
+        first = panel[0]
+        self.assertEqual(first["date"], (start + timedelta(days=20)).isoformat())
+        self.assertAlmostEqual(first["momentum_5"], 120 / 115 - 1)
+        self.assertAlmostEqual(first["forward_return"], 121 / 120 - 1)
+        self.assertEqual(first["reversal_5"], -first["momentum_5"])
+
+    def test_miner_runs_oos_cost_and_redundancy_without_trade_authority(self) -> None:
+        result = alpha_miner.mine_alpha_candidates(self._bars())
+        self.assertEqual(result["schema_version"], "cis.lightweight_alpha_research.v1")
+        self.assertEqual(result["decision_authority"], "none")
+        self.assertGreaterEqual(result["input"]["factors_tested"], 4)
+        self.assertTrue(result["factors"])
+        for factor in result["factors"]:
+            self.assertGreaterEqual(factor["split"]["test_periods"], 3)
+            zero_cost = factor["oos_cost_sensitivity"]["0bps"]
+            high_cost = factor["oos_cost_sensitivity"]["20bps"]
+            if zero_cost is not None and high_cost is not None:
+                self.assertLessEqual(high_cost, zero_cost)
+        reversal = next(item for item in result["factors"] if item["factor"] == "reversal_5")
+        momentum = result["factor_correlations"]["reversal_5"]["momentum_5"]
+        self.assertAlmostEqual(momentum, -1.0)
+        self.assertIsNotNone(reversal["redundant_with"])
 
 
 class ModelTestTests(unittest.TestCase):
