@@ -1,4 +1,4 @@
-# CIS Alpha Research Agent（0.5.0）
+# CIS Alpha Research Agent（0.4.5）
 
 `extensions/alpha_research/` 是 CIS 的**可选 Alpha Discovery / Validation 扩展**，不属于日常单股分析默认链，也不拥有最终投资动作权。
 
