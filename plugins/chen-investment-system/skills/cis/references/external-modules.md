@@ -42,6 +42,26 @@ Anthropic `financial-services` 是 CIS 首选专业金融 Skill 上游，用于 
 
 只有本次真实读取/执行对应 Skill 且关键输入完整时，才能标记为已使用。输出必须回灌 CIS Evidence Gate。
 
+## Curated External Investing Skills Overlay
+
+CIS 对公开投资 Skill 仓库的精选、去重与 Adapter 契约统一维护在：
+
+```text
+references/curated-external-skills.md
+```
+
+当用户请求以下任务时按需读取该文件：
+
+- 超级趋势/供应链瓶颈/“下一只 LITE、AOSL”式机会寻找；
+- 行业漏斗、快速去劣、管理层深挖；
+- 既有研究论文漂移检查、突发异动快速归因；
+- 仓位计算、账户回撤熔断、下单前纪律门；
+- 期权结构比较、交易后复盘。
+
+Overlay 当前精选 20 项外部能力，其中已被 CIS / Anthropic 覆盖的能力只做路由映射，缺失能力以 CIS Adapter 形式补齐。**不得因为 Skill 名称相同就声称第三方代码已运行。** Adapter 默认状态为 `methodology_adapter_unvalidated`，需要经验阈值、统计效果或 edge 证明的部分必须继续走 Backtest / Evaluation，而不能包装成已验证策略。
+
+Daisy Financial Research 与 InvestSkill 中的 point-in-time、防前视、数值校验、数据验证门和 decision-log 设计仅作为 CIS Evidence / Performance 的实现参考，不建立第二套总控、第二套评分权威或自动动作链。
+
 ## WorldQuant BRAIN / Alpha Research Source
 
 WorldQuant BRAIN 在 CIS 中只定位为**外部 Alpha 候选来源**，不属于 CIS Core，也没有最终动作权。
