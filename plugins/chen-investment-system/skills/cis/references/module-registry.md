@@ -19,6 +19,7 @@ CIS 采用 **Core Analysis + Optional Research Tooling + Alpha Research** 分层
 | ETF / QDII Gate | 产品身份、溢价、申赎、时差、流动性 | `installed` | **Core** | 质量门 |
 | Portfolio Gate | 成本、权重、集中度、约束、资金需求 | `installed` | **Core, 按需** | 质量门 |
 | Anthropic Financial Services | DCF、Comps、财报、模型、竞争、论点/催化剂 | `upstream_preferred` | **External, 按需** | 无 |
+| Curated External Investing Skills Overlay | 20项去重后的外部投资能力映射；补充瓶颈、管理层、论文漂移、仓位、期权、交易纪律/复盘等 Adapter | `methodology_adapter_unvalidated` | **External methodology, 按需** | 无 |
 | Original TradingAgents Runtime | 官方 Python 多 Agent 运行；secret-backed 仅 reviewed SHA | `explicit_test_only` | **External test** | 无 |
 | WorldQuant BRAIN Alpha Source | 产生/导出 Alpha 候选；CIS 只接候选与指标 | `external_research_source` | **External, Alpha Research** | 无 |
 | CIS Alpha Research Agent | Alpha 导入、结构筛选、因子/OOS 诊断与后续研究门 | `experimental_optional` | **Alpha Research Extension** | 无 |
@@ -38,16 +39,23 @@ Alpha 研究扩展：
 extensions/alpha_research/
 ```
 
+精选外部 Skill Overlay：
+
+```text
+plugins/chen-investment-system/skills/cis/references/curated-external-skills.md
+```
+
 ## 路由边界
 
 - 日常单股分析：只要求 Core；
 - 短线/具体买点：Core 内增加 Price/Session Guard + Quote Freshness + Tactical R/R Gate；
+- 供应链瓶颈、行业漏斗、管理层深挖、论文漂移、突发异动、仓位、回撤熔断、下单纪律、期权结构和交易复盘：按需读取 Curated External Investing Skills Overlay；
 - 大股票池/Top N：按需启用 Quant Extension；
 - Alpha 挖掘/WorldQuant BRAIN 候选评估：按需启用 Alpha Research Agent；
 - 规则有效性验证：按需启用 Backtest Extension；
 - 用户明确要求记录、复盘或校准：按需启用 Prediction/Evaluation Extension；
 - Extension 故障不得阻塞 Core；
-- Alpha/Extension 不能自动改生产评分权重或发布最终买卖动作。
+- Alpha/Extension/External Adapter 不能自动改生产评分权重或发布最终买卖动作。
 
 ## Alpha Research 安全边界
 
@@ -81,4 +89,5 @@ Cloud/secret-backed execution 只有当当前 upstream SHA 与 `reviewed_sha` �
 - `external_research_source`：外部研究平台，仅提供候选/研究输入；
 - `explicit_test_only`：只有用户明确要求原版运行/系统测试时使用；
 - `upstream_preferred`：专业方法首选上游，必须逐次确认可访问性；
+- `methodology_adapter_unvalidated`：已完成 CIS 路由与契约适配，但其中经验阈值/策略 edge 尚未被 CIS 独立验证；
 - `fail_closed_gate`：没有明确 pass 就视为未通过。
